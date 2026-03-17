@@ -12,7 +12,13 @@ Use pi's normal auto-discovery paths.
 
 Choose one:
 
-### Option A — global install from an existing checkout
+### Option A — pi install (recommended)
+
+```
+pi install git:https://github.com/tensorfish/pi-telegram
+```
+
+### Option B — global install from an existing checkout
 
 If this repository already exists on disk at `/absolute/path/to/pi-telegram`:
 
@@ -21,14 +27,14 @@ mkdir -p ~/.pi/agent/extensions
 ln -s /absolute/path/to/pi-telegram ~/.pi/agent/extensions/pi-telegram
 ```
 
-### Option B — global install by cloning directly into the extension directory
+### Option C — global install by cloning directly into the extension directory
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
 git clone <repo-url> ~/.pi/agent/extensions/pi-telegram
 ```
 
-### Option C — project-local install
+### Option D — project-local install
 
 From the target project root:
 

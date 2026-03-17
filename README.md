@@ -26,7 +26,11 @@ Before you start, you need:
 
 ### 1. Install the extension
 
-From this repository root:
+```
+pi install git:https://github.com/tensorfish/pi-telegram
+```
+
+Or from this repository root:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
