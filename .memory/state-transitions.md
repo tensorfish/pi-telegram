@@ -87,11 +87,14 @@ The relay reads and writes only:
 - `ConfigPresent = true`
 - `Enabled = true`
 - runtime connect / polling loop is active
-- a Telegram API call succeeded within the last 60 seconds
+- at least one Telegram API call has succeeded
+- `RetryActive = false` (no connection-affecting failures pending retry)
 
 Before the relay becomes healthy, an in-flight connection attempt may temporarily render `<spinner> Telegram Connecting`.
 
 Otherwise the footer is `Telegram Disconnected`.
+
+The connection check does **not** use a timestamp window. It relies on the retry state machine: a successful API call clears `RetryActive`, and a connection-affecting failure sets it. This prevents false "Connecting" flicker during long-running agent turns where the poll loop is healthy but the long-poll response hasn't arrived yet.
 
 ### Invariant 3 — One run envelope
 
@@ -226,7 +229,10 @@ Preconditions:
 Effects:
 
 - persist `Enabled = true`
+- reset retry state (`RetryActive = false`, attempt counter zeroed)
 - start or resume connection attempts immediately
+- first poll uses `timeout: 0` for instant connectivity validation
+- all polls include a client-side fetch timeout to prevent stale-connection hangs
 
 ### `Logout`
 

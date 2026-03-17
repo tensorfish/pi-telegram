@@ -340,14 +340,14 @@ If final output is too large, edit the original message into chunk 1 and send co
 
 ---
 
-## Step 28 — Define connected from recent API success ✅
+## Step 28 — Define connected from retry state machine ✅
 
 ### Goal
-Make `Telegram Connected` mean the last Telegram API call succeeded within the last 60 seconds, while allowing only a brief `<spinner> Telegram Connecting` state before the relay becomes healthy.
+Make `Telegram Connected` mean the poll loop is active, at least one API call has succeeded, and no connection-affecting failures are pending retry. The first poll after starting the loop uses `timeout: 0` for instant connectivity validation. All polls include a client-side fetch timeout to prevent stale-connection hangs.
 
 ### Validation test
-- Human-in-the-loop verification: keep the relay healthy and confirm the footer settles on `Telegram Connected`; break the connection and confirm it becomes disconnected.
-- AI feedback loop verification: emit a health report showing last successful API call timestamp and resulting connection state.
+- Human-in-the-loop verification: keep the relay healthy and confirm the footer settles on `Telegram Connected`; break the connection and confirm it becomes disconnected; toggle off and on and confirm it reconnects quickly.
+- AI feedback loop verification: emit a health report showing retry state and resulting connection state.
 
 ---
 

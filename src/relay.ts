@@ -8,8 +8,10 @@ import type { FailureLogEntry, RelayConfig, RelayStatusReport, TelegramUpdate } 
 import { TelegramApiError } from "./types.ts";
 
 const STATUS_KEY = "pi-telegram";
-const CONNECTED_WINDOW_MS = 60_000;
 const RETRY_INTERVAL_MS = 5_000;
+const NORMAL_POLL_TIMEOUT_S = 50;
+const WARMUP_POLL_TIMEOUT_S = 0;
+const CLIENT_TIMEOUT_BUFFER_MS = 15_000;
 
 const POLL_SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 
@@ -109,6 +111,9 @@ export class RelayConnection {
 		if (this.pollLoopActive || !this.config?.enabled || !this.api) return;
 		const generation = ++this.pollLoopGeneration;
 		this.pollLoopActive = true;
+		this.retryActive = false;
+		this.retryAttempt = 0;
+		this.retryLogPath = null;
 		const loopPromise = this.pollLoop(generation).finally(() => {
 			if (this.pollLoopPromise === loopPromise) this.pollLoopPromise = null;
 		});
@@ -133,20 +138,31 @@ export class RelayConnection {
 	}
 
 	private async pollLoop(generation: number): Promise<void> {
+		let firstPoll = true;
 		while (generation === this.pollLoopGeneration && this.config?.enabled && this.api) {
 			const abortController = new AbortController();
 			this.pollAbortController = abortController;
 			this.pollRequestInFlight = true;
 			this.refreshFooter();
+
+			// Use a short first poll to validate connectivity fast,
+			// then switch to normal long-poll timeout.
+			const pollTimeoutS = firstPoll ? WARMUP_POLL_TIMEOUT_S : NORMAL_POLL_TIMEOUT_S;
+			const clientTimeoutMs = pollTimeoutS * 1000 + CLIENT_TIMEOUT_BUFFER_MS;
+			const clientTimer = setTimeout(() => abortController.abort(), clientTimeoutMs);
+
 			try {
-				const updates = await this.api.getUpdates(this.currentOffset, 50, abortController.signal);
+				const updates = await this.api.getUpdates(this.currentOffset, pollTimeoutS, abortController.signal);
+				clearTimeout(clientTimer);
 				if (generation !== this.pollLoopGeneration || !this.config?.enabled) break;
 				this.recordApiSuccess();
+				firstPoll = false;
 				for (const update of updates) {
 					this.currentOffset = update.update_id + 1;
 					if (this.onUpdate) await this.onUpdate(update);
 				}
 			} catch (error) {
+				clearTimeout(clientTimer);
 				if (this.isAbortError(error) && generation !== this.pollLoopGeneration) break;
 				await this.handleApiFailure(error, "getUpdates");
 				if (generation !== this.pollLoopGeneration || !this.config?.enabled) break;
@@ -155,6 +171,7 @@ export class RelayConnection {
 				this.refreshFooter();
 				await sleep(RETRY_INTERVAL_MS);
 			} finally {
+				clearTimeout(clientTimer);
 				if (this.pollAbortController === abortController) {
 					this.pollRequestInFlight = false;
 					this.pollSpinnerIndex = 0;
@@ -199,8 +216,10 @@ export class RelayConnection {
 	// --- Connection state ---
 
 	isConnected(): boolean {
-		if (!this.config?.enabled || !this.pollLoopActive || !this.lastApiSuccessAt) return false;
-		return Date.now() - this.lastApiSuccessAt <= CONNECTED_WINDOW_MS;
+		if (!this.config?.enabled || !this.pollLoopActive) return false;
+		if (!this.lastApiSuccessAt) return false;
+		if (this.retryActive) return false;
+		return true;
 	}
 
 	refreshFooter(): void {

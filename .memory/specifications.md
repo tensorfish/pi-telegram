@@ -54,11 +54,21 @@ If Telegram is connected and available, every pi run should attempt to produce T
 - relay config exists
 - relay is enabled
 - the connect / polling loop is running
-- the **last Telegram API call succeeded within the last 60 seconds**
+- at least one Telegram API call has succeeded
+- no connection-affecting failures are pending retry
 
 Before the relay becomes healthy, the footer may temporarily render `<spinner> Telegram Connecting` during an active connection attempt.
 
 `Telegram Disconnected` means anything else.
+
+### Poll reconnection behavior
+
+When the poll loop starts (including after `/telegram toggle` re-enable):
+
+- the first `getUpdates` uses `timeout: 0` (instant response) to validate connectivity fast
+- subsequent polls use the normal 50-second long-poll timeout
+- all poll requests have a client-side fetch timeout (`server timeout + 15 seconds`) to prevent hangs on stale TCP connections
+- retry state is reset at the start of each new poll loop
 
 ### Queue rule
 
@@ -771,7 +781,7 @@ The implementation is correct only if all of the following are true:
 15. Editing a queued Telegram message updates the queued item in place.
 16. Sending a new Telegram message creates a new FIFO queued item.
 17. Telegram may invoke relay-management commands (`/telegram status`, `/telegram toggle`, `/telegram logout yes`, `/telegram test`) and all other text is treated as normal prompt input.
-18. `Telegram Connected` means the last Telegram API call succeeded within the last 60 seconds.
+18. `Telegram Connected` means the poll loop is active, at least one API call has succeeded, and no connection-affecting failures are pending retry.
 19. On startup with an already validated enabled config, the relay attempts a short Telegram connected message to the configured chat.
 20. Runtime failure switches the relay to disconnected immediately and retries every 5 seconds.
 21. Failure episodes are logged under `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log`.

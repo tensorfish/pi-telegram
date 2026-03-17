@@ -142,4 +142,16 @@ export class TelegramApi {
 			signal,
 		);
 	}
+
+	async deleteMessage(chatId: number, messageId: number, signal?: AbortSignal): Promise<boolean> {
+		return telegramRequest<boolean>(
+			this.token,
+			"deleteMessage",
+			{
+				chat_id: chatId,
+				message_id: messageId,
+			},
+			signal,
+		);
+	}
 }
