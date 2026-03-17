@@ -4,6 +4,28 @@ This is the execution plan for the Telegram relay.
 
 This plan must be implemented in a way that preserves `.memory/state-transitions.md`.
 
+## Current build status
+
+Implementation has begun.
+
+Current project files added for execution:
+
+- `package.json`
+- `tsconfig.json`
+- `index.ts`
+- `src/types.ts`
+- `src/config.ts`
+- `src/telegram-api.ts`
+- `src/render.ts`
+- `src/index.ts`
+
+These files establish the initial extension skeleton, relay config handling, Telegram API client, rendering layer, and command / polling runtime.
+
+Documentation is now split intentionally:
+
+- `README.md` is the human quickstart and usage entrypoint.
+- `SETUP.md` is the AI-agent installation guide.
+
 Plan rules:
 
 - each step is small
@@ -28,10 +50,10 @@ Make the TypeScript pi extension load and register `/telegram`.
 ## Step 2 — Show footer connection state
 
 ### Goal
-Show relay state in the footer using `TG connected` or `TG disconnected`.
+Show relay state in the footer using `Telegram Connected` or `Telegram Disconnected`, with a small `<spinner> Telegram Connecting` animation only while the relay is still becoming healthy.
 
 ### Validation test
-- Human-in-the-loop verification: start pi with no valid connection and confirm the footer shows `TG disconnected`.
+- Human-in-the-loop verification: start pi with no valid connection and confirm the footer shows `Telegram Disconnected`; connect successfully and confirm it briefly shows `Telegram Connecting` before settling on `Telegram Connected`.
 - AI feedback loop verification: emit a state report with the current footer value.
 
 ---
@@ -50,11 +72,11 @@ Use only `~/.pi/agent/pi-telegram.json` and enforce the fixed config shape.
 ## Step 4 — Load saved config on startup
 
 ### Goal
-Read `~/.pi/agent/pi-telegram.json` at startup and restore the saved relay preference.
+Read `~/.pi/agent/pi-telegram.json` at startup, restore the saved relay preference, and if the saved config was already validated try a short Telegram connection message immediately.
 
 ### Validation test
-- Human-in-the-loop verification: create the config file, restart pi, and confirm the relay restores the saved state.
-- AI feedback loop verification: emit a startup report showing config found, enabled flag, and parsed config values.
+- Human-in-the-loop verification: create the config file, restart pi, and confirm the relay restores the saved state and attempts the startup connected message.
+- AI feedback loop verification: emit a startup report showing config found, enabled flag, parsed config values, and startup-send result.
 
 ---
 
@@ -69,46 +91,46 @@ Validate a provided bot token and resolve bot username and bot id.
 
 ---
 
-## Step 6 — Validate the chat id
+## Step 6 — Resolve and validate the chat
 
 ### Goal
-Accept a manually pasted numeric chat id and validate it with `getChat(chatId)` and `getChatMember(chatId, botId)`.
+Support both chat-discovery paths: auto-detect from a message sent to the bot, or manually pasted numeric chat id, then validate with `getChat(chatId)` and `getChatMember(chatId, botId)`.
 
 ### Validation test
-- Human-in-the-loop verification: enter a valid numeric chat id and confirm success; enter an invalid or unreachable chat id and confirm failure.
-- AI feedback loop verification: emit a validation result with chat id, parse status, `getChat` result, and `getChatMember` result.
+- Human-in-the-loop verification: message the bot and confirm chat detection succeeds; also enter a valid numeric chat id manually and confirm success.
+- AI feedback loop verification: emit a validation result with discovery mode, chat id, parse status when manual, `getChat` result, and `getChatMember` result.
 
 ---
 
 ## Step 7 — Collect and validate allowed user ids
 
 ### Goal
-Accept a CSV of allowed Telegram user ids and convert it into a numeric whitelist.
+Auto-fill the whitelist for private chats and require a CSV whitelist for group chats.
 
 ### Validation test
-- Human-in-the-loop verification: enter a valid CSV and confirm it is accepted; enter non-numeric values or an empty list and confirm rejection.
-- AI feedback loop verification: emit a whitelist parse report with the final numeric array.
+- Human-in-the-loop verification: connect a private chat and confirm the user id is auto-added; connect a group chat and confirm a CSV whitelist is still required.
+- AI feedback loop verification: emit a whitelist result showing whether ids were auto-derived or manually entered.
 
 ---
 
 ## Step 8 — Build the `/telegram connect` flow
 
 ### Goal
-Create the guided connect flow that collects token, chat id, allowed user ids, validates them, writes config, and optionally enables the relay.
+Create the guided connect flow that collects the bot token, offers auto-detect or manual chat setup, derives or collects allowed user ids as needed, writes config, and optionally enables the relay.
 
 ### Validation test
-- Human-in-the-loop verification: complete the full flow without manual file editing and confirm the final footer state matches the chosen enable setting.
-- AI feedback loop verification: emit a connect-flow completion report with saved config fields and resulting connection state.
+- Human-in-the-loop verification: complete both the auto-detect path and the manual path without manual file editing and confirm the final footer state matches the chosen enable setting.
+- AI feedback loop verification: emit a connect-flow completion report with discovery mode, saved config fields, and resulting connection state.
 
 ---
 
 ## Step 9 — Add setup hints
 
 ### Goal
-Show short hints in the connect flow telling the user where to get chat id, user id, and bot id.
+Show short hints in the connect flow telling the user that the bot token comes from `@BotFather`, that they can message the bot for auto-detection, how to find a manual chat id, how to find user ids for group whitelists, and that group chats still require a whitelist.
 
 ### Validation test
-- Human-in-the-loop verification: run `/telegram connect` and confirm the hints are visible during setup.
+- Human-in-the-loop verification: run `/telegram connect` and confirm the setup hints are visible during setup.
 - AI feedback loop verification: emit a flow-state report showing the hint step was displayed.
 
 ---
@@ -314,10 +336,10 @@ If final output is too large, edit the original message into chunk 1 and send co
 ## Step 28 — Define connected from recent API success
 
 ### Goal
-Make `TG connected` mean the last Telegram API call succeeded within the last 60 seconds.
+Make `Telegram Connected` mean the last Telegram API call succeeded within the last 60 seconds, while allowing only a brief `<spinner> Telegram Connecting` state before the relay becomes healthy.
 
 ### Validation test
-- Human-in-the-loop verification: keep the relay healthy and confirm the footer stays connected; break the connection and confirm it becomes disconnected.
+- Human-in-the-loop verification: keep the relay healthy and confirm the footer settles on `Telegram Connected`; break the connection and confirm it becomes disconnected.
 - AI feedback loop verification: emit a health report showing last successful API call timestamp and resulting connection state.
 
 ---

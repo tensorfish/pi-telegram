@@ -49,14 +49,16 @@ If Telegram is connected and available, every pi run should attempt to produce T
 
 ### Footer meaning
 
-`TG connected` means:
+`Telegram Connected` means:
 
 - relay config exists
 - relay is enabled
 - the connect / polling loop is running
 - the **last Telegram API call succeeded within the last 60 seconds**
 
-`TG disconnected` means anything else.
+Before the relay becomes healthy, the footer may temporarily render `<spinner> Telegram Connecting` during an active connection attempt.
+
+`Telegram Disconnected` means anything else.
 
 ### Queue rule
 
@@ -88,10 +90,13 @@ That includes:
 
 ### Chat id flow
 
-Chat id entry is **manual only**.
+Chat selection supports **two paths**:
 
-The user must paste a numeric chat id.
-There is no chat-capture flow.
+1. auto-detect by having the user send a message to the bot
+2. manual numeric chat id entry
+
+For private chats, the relay should auto-use the detected private user id as the whitelist.
+For group chats, the relay should require manual whitelist entry even if chat detection was automatic.
 
 ### Queue lifetime
 
@@ -131,6 +136,15 @@ On any connection-affecting Telegram API failure:
 - keep retrying automatically every **5 seconds**
 - append repeated failures to a log file under `~/.pi/pi-telegram/`
 - when a Telegram API call succeeds again, mark the footer connected again
+
+### Startup restore behavior
+
+When pi starts and an existing enabled config with `lastValidatedAt` is present:
+
+- restore the relay configuration
+- begin connection attempts immediately
+- try to send a short Telegram message to the configured chat indicating the relay is connected
+- if that send succeeds, the footer may move directly to `Telegram Connected`
 
 ---
 
@@ -192,13 +206,16 @@ This command must be guided and interactive.
 The flow collects, in order:
 
 1. bot token
-2. chat id
-3. allowed user ids as CSV
-4. enable-now confirmation
+2. chat-selection method: auto-detect or manual chat id entry
+3. chat id, either captured from an incoming bot message or entered manually
+4. allowed user ids when required
+5. enable-now confirmation
 
 ### Token validation
 
 Validate the bot token immediately.
+
+The flow must explicitly tell the user to get the token from `@BotFather`.
 
 On success, show:
 
@@ -208,9 +225,29 @@ On success, show:
 The user does **not** type the bot id manually.
 It is resolved from Telegram.
 
-### Chat id validation
+### Chat selection and validation
 
-The user must paste a numeric chat id manually.
+The flow must support both of these paths.
+
+#### Auto-detect path
+
+The user sends a message to the bot.
+The relay polls Telegram updates and captures:
+
+- `chatId`
+- sender `userId`
+- chat type
+
+Validation must then confirm:
+
+- `getChat(chatId)` succeeds
+- `getChatMember(chatId, botId)` succeeds
+- the bot can access that chat
+- the chat is usable for relay purposes
+
+#### Manual path
+
+The user pastes a numeric chat id manually.
 
 Validation must confirm:
 
@@ -222,24 +259,26 @@ Validation must confirm:
 
 ### Allowed user id validation
 
-The user must paste a CSV of numeric Telegram user ids.
-
 Rules:
 
+- if the resolved chat is private, auto-set `allowedUserIds = [privateUserId]`
+- if the resolved chat is a group or supergroup, require a CSV of numeric Telegram user ids
 - trim whitespace
-- require at least one id
+- require at least one id when CSV entry is required
 - reject non-numeric values
 - store as numeric array in input order
 
 ### Setup hints
 
-The connect flow must show short hints explaining where to get:
+The connect flow must show short hints explaining:
 
-- chat id
-- user id
-- bot id
-
-Bot id is for user reference only; it is still resolved automatically from the token.
+- bot token comes from `@BotFather`
+- the user may simply message the bot to auto-detect chat id and sender id
+- manual numeric chat id entry is still allowed
+- if the user chooses manual chat id entry, explain how to get the chat id
+- if the user must enter allowed user ids, explain how to get those user ids
+- group chats still require a whitelist of allowed user ids
+- bot id is for user reference only and is still resolved automatically from the token
 
 ### Save result
 
@@ -274,18 +313,17 @@ Optional aliases are allowed, but `/telegram ...` is the canonical interface.
 
 ### `/telegram`
 
-Shows:
+Shows a **human-friendly overview**.
 
-- connected or disconnected
-- enabled true or false
-- bot username and bot id if configured
-- chat id if configured
-- allowed user ids
-- queue length
-- active Telegram progress message id if one exists
-- last successful Telegram API call time
-- current retry state if disconnected due to runtime failure
-- current failure log path if a retry episode is active
+It should not dump the deterministic status blob by default.
+
+It should show:
+
+- a friendly relay summary
+- the current connection state in human terms
+- configured chat and allowed-user summary when available
+- the available `/telegram` subcommands
+- guidance to use `/telegram status` for the raw deterministic state report
 
 ### `/telegram toggle`
 
@@ -339,7 +377,7 @@ This command must:
 1. send a Telegram test message
 2. include a one-time numeric reply code
 3. wait up to **60 seconds** for a matching reply from an allowed sender in the configured chat
-4. report success or failure locally
+4. report success or failure locally without leaving persistent setup clutter behind in the main transcript UI
 5. edit the Telegram test message to reflect success or expiry
 
 ---
@@ -352,8 +390,10 @@ The footer should stay simple.
 
 Steady states:
 
-- `TG connected`
-- `TG disconnected`
+- `Telegram Connected`
+- `Telegram Disconnected`
+
+During an active connection attempt before the relay is healthy, the footer may temporarily render `<spinner> Telegram Connecting`.
 
 ## Failure feedback
 
@@ -361,11 +401,11 @@ When runtime failures occur, the footer may temporarily expand the disconnected 
 
 Allowed retry format:
 
-- `TG disconnected · retrying in 5s`
+- `Telegram Disconnected · retrying in 5s`
 
 When Telegram calls succeed again, return to:
 
-- `TG connected`
+- `Telegram Connected`
 
 ---
 
@@ -630,7 +670,7 @@ On a connection-affecting failure:
 When a Telegram API call succeeds again:
 
 - mark the relay connected again
-- return the footer to `TG connected`
+- return the footer to `Telegram Connected`
 - stop the current retry episode
 
 A successful polling call also counts as a successful Telegram API call for connection-health purposes.
@@ -696,6 +736,7 @@ Any project change must update:
 
 - `.memory/`
 - `README.md`
+- `SETUP.md`
 - `AGENTS.md`
 
 ---
@@ -706,23 +747,25 @@ The implementation is correct only if all of the following are true:
 
 1. The extension is written in TypeScript.
 2. The relay reads and writes only `~/.pi/agent/pi-telegram.json`.
-3. `/telegram connect` collects bot token, chat id, and allowed user ids CSV.
-4. Bot token validation resolves and displays bot username and bot id.
-5. Chat id is entered manually and validated against Telegram.
-6. Allowed user ids are stored as a whitelist and enforced for all inbound Telegram control.
-7. All pi runs, including local-terminal-originated runs, create Telegram progress updates while connected.
-8. Each run uses one Telegram progress message and edits it in place.
-9. Final output edits the original progress message.
-10. Long final output uses Takopi-style safe splitting with continuation chunks.
-11. Accepted Telegram messages are injected into pi as normal user input.
-12. If pi is busy, queued input drains automatically after the current assistant message ends.
-13. Queue order is strict FIFO across all sources.
-14. Editing a queued Telegram message updates the queued item in place.
-15. Sending a new Telegram message creates a new FIFO queued item.
-16. Telegram may invoke all commands, including relay-management commands.
-17. `TG connected` means the last Telegram API call succeeded within the last 60 seconds.
-18. Runtime failure switches the relay to disconnected immediately and retries every 5 seconds.
-19. Failure episodes are logged under `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log`.
-20. Queue state survives disconnect/reconnect within the same process and does not survive restart or extension reload.
-21. Captions do not act as prompt input in v1.
-22. `/telegram logout` does not remove prompts already accepted into pi’s prompt flow.
+3. `/telegram` without a subcommand shows a human-friendly overview and the available subcommands.
+4. `/telegram connect` collects a bot token, resolves a chat by auto-detect or manual chat id entry, and collects allowed user ids when required.
+5. Bot token validation resolves and displays bot username and bot id, and tells the user to get the token from `@BotFather`.
+6. Chat selection is validated against Telegram whether it came from auto-detect or manual entry.
+7. Allowed user ids are stored as a whitelist and enforced for all inbound Telegram control.
+8. All pi runs, including local-terminal-originated runs, create Telegram progress updates while connected.
+9. Each run uses one Telegram progress message and edits it in place.
+10. Final output edits the original progress message.
+11. Long final output uses Takopi-style safe splitting with continuation chunks.
+12. Accepted Telegram messages are injected into pi as normal user input.
+13. If pi is busy, queued input drains automatically after the current assistant message ends.
+14. Queue order is strict FIFO across all sources.
+15. Editing a queued Telegram message updates the queued item in place.
+16. Sending a new Telegram message creates a new FIFO queued item.
+17. Telegram may invoke all commands, including relay-management commands.
+18. `Telegram Connected` means the last Telegram API call succeeded within the last 60 seconds.
+19. On startup with an already validated enabled config, the relay attempts a short Telegram connected message to the configured chat.
+20. Runtime failure switches the relay to disconnected immediately and retries every 5 seconds.
+21. Failure episodes are logged under `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log`.
+22. Queue state survives disconnect/reconnect within the same process and does not survive restart or extension reload.
+23. Captions do not act as prompt input in v1.
+24. `/telegram logout` does not remove prompts already accepted into pi’s prompt flow.

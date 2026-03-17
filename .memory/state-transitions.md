@@ -82,14 +82,16 @@ The relay reads and writes only:
 
 ### Invariant 2 — Footer meaning
 
-`TG connected` iff all are true:
+`Telegram Connected` iff all are true:
 
 - `ConfigPresent = true`
 - `Enabled = true`
 - runtime connect / polling loop is active
 - a Telegram API call succeeded within the last 60 seconds
 
-Otherwise the footer is `TG disconnected`.
+Before the relay becomes healthy, an in-flight connection attempt may temporarily render `<spinner> Telegram Connecting`.
+
+Otherwise the footer is `Telegram Disconnected`.
 
 ### Invariant 3 — One run envelope
 
@@ -161,6 +163,7 @@ Effects:
 - load relay config from `~/.pi/agent/pi-telegram.json` if present
 - set config fields
 - if `Enabled = true`, begin connection attempts
+- if the saved config has already been validated, try a short startup Telegram send to confirm the relay is connected
 
 ### `ConnectSuccess`
 
@@ -474,7 +477,8 @@ The implementation must preserve these consequences:
 
 A human or AI should be able to verify this model through:
 
-- `/telegram status`
+- `/telegram` for the human-friendly relay overview
+- `/telegram status` for the deterministic raw state report
 - footer state visibility
 - queue reports with sequence numbers
 - run reports with run id, turn index, and progress message id
