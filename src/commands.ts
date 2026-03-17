@@ -142,10 +142,12 @@ export class CommandHandler {
 				return;
 			}
 			this.pendingTest = { code, messageId, expiresAt: Date.now() + TEST_TIMEOUT_MS };
+			this.relay.setWorkingMessage("Waiting for test reply in Telegram...");
 			report("test.sent", { code, messageId, expiresAt: this.pendingTest.expiresAt });
-		} finally {
+		} catch {
 			this.relay.setWorkingMessage();
 		}
+		// Working message stays visible until test completes or expires
 	}
 
 	async completeTestSuccess(senderId: number): Promise<void> {
@@ -153,6 +155,7 @@ export class CommandHandler {
 		await this.relay.telegramEdit(this.pendingTest.messageId, "Telegram relay test\n\nSuccess. Outbound and inbound relay both work.");
 		report("test.success", { senderId, messageId: this.pendingTest.messageId });
 		this.pendingTest = null;
+		this.relay.setWorkingMessage();
 	}
 
 	async expirePendingTestIfNeeded(): Promise<void> {
@@ -162,6 +165,7 @@ export class CommandHandler {
 		this.pendingTest = null;
 		await this.relay.telegramEdit(expired.messageId, "Telegram relay test\n\nExpired. No matching reply was received in time.");
 		report("test.expired", { messageId: expired.messageId });
+		this.relay.setWorkingMessage();
 	}
 
 	private async remoteTest(): Promise<void> {
@@ -238,7 +242,7 @@ export class CommandHandler {
 		await this.relay.stopPolling();
 		try {
 			const botToken = await ctx.ui.input(
-				"Telegram bot token (get it from @BotFather; if needed message @BotFather and send /newbot)",
+				"Bot token from @BotFather",
 				"123456789:ABCdef...",
 			);
 			if (!botToken) return;
@@ -421,7 +425,7 @@ export class CommandHandler {
 		nextOffset: number | undefined,
 	): Promise<ResolvedChatTarget | null> {
 		const chatIdInput = await ctx.ui.input(
-			"Telegram chat id (rerun connect and choose auto-detect if you do not know it; otherwise get it from Bot API getUpdates after messaging the bot, or from a trusted chat-id helper bot)",
+			"Chat id (message @userinfobot to find it)",
 			"-1001234567890",
 		);
 		if (!chatIdInput) return null;
@@ -459,8 +463,8 @@ export class CommandHandler {
 		}
 		const defaultCsv = detectedSenderId ? String(detectedSenderId) : "123456789,987654321";
 		const prompt = detectedSenderId
-			? `Allowed Telegram user ids CSV (group chat; the sender who just messaged the bot was ${detectedSenderId}; if needed ask users to message the bot once so they appear in Bot API getUpdates, or use a trusted user-id helper bot)`
-			: "Allowed Telegram user ids CSV (group chat; ask users to message the bot once so they appear in Bot API getUpdates, or use a trusted user-id helper bot)";
+			? `Allowed user ids, comma-separated (detected sender: ${detectedSenderId}; others can message @userinfobot)`
+			: "Allowed user ids, comma-separated (message @userinfobot to find them)";
 		const allowedIdsCsv = await ctx.ui.input(prompt, defaultCsv);
 		if (!allowedIdsCsv) return null;
 		const allowedUserIds = parseAllowedUserIds(allowedIdsCsv);

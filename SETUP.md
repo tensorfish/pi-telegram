@@ -97,8 +97,8 @@ Rules:
 
 - private-chat setup auto-adds the detected user id to the whitelist
 - group-chat setup still requires manual whitelist entry
-- when manual chat id entry is used, the connect flow should explain how to find the chat id
-- when manual user-id entry is required, the connect flow should explain how to find those user ids
+- when manual chat id entry is used, the connect flow mentions `@userinfobot`
+- when manual user-id entry is required, the connect flow mentions `@userinfobot`
 
 ## Verify inbound and outbound relay
 

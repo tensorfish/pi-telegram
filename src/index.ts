@@ -13,6 +13,7 @@ export default function telegramExtension(pi: ExtensionAPI): void {
 	const relay = new RelayConnection(pi);
 	const commands = new CommandHandler(relay);
 	const queue = new PromptQueue(pi);
+	relay.getQueueLength = () => queue.length;
 
 	let run: ActiveRunState | null = null;
 	let nextRunId = 1;
@@ -155,6 +156,7 @@ export default function telegramExtension(pi: ExtensionAPI): void {
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		relay.rememberContext(ctx);
+		await relay.sendShutdownDisconnectedMessage();
 		await relay.stopPolling();
 		relay.clearHealthTimer();
 		relay.clearFooter();

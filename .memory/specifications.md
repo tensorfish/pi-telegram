@@ -143,8 +143,14 @@ When pi starts and an existing enabled config with `lastValidatedAt` is present:
 
 - restore the relay configuration
 - begin connection attempts immediately
-- try to send a short Telegram message to the configured chat indicating the relay is connected
-- if that send succeeds, the footer may move directly to `Telegram Connected`
+- try to send `🟢 @bot_name connected` to the configured chat
+- if that send succeeds, the footer may move directly to `Telegram Connected · @bot_name`
+
+### Shutdown behavior
+
+On clean session shutdown while connected:
+
+- send `🔴 @bot_name disconnected` to the configured chat before stopping the poll loop
 
 ---
 
@@ -275,8 +281,8 @@ The connect flow must show short hints explaining:
 - bot token comes from `@BotFather`
 - the user may simply message the bot to auto-detect chat id and sender id
 - manual numeric chat id entry is still allowed
-- if the user chooses manual chat id entry, explain how to get the chat id
-- if the user must enter allowed user ids, explain how to get those user ids
+- if the user chooses manual chat id entry, mention `@userinfobot` for finding the chat id
+- if the user must enter allowed user ids, mention `@userinfobot` for finding user ids
 - group chats still require a whitelist of allowed user ids
 - bot id is for user reference only and is still resolved automatically from the token
 
@@ -390,7 +396,8 @@ The footer should stay simple.
 
 Steady states:
 
-- `Telegram Connected`
+- `Telegram Connected · @bot_name`
+- `Telegram Connected · @bot_name · N queued` (when queue depth > 0)
 - `Telegram Disconnected`
 
 During an active connection attempt before the relay is healthy, the footer may temporarily render `<spinner> Telegram Connecting`.
@@ -405,7 +412,7 @@ Allowed retry format:
 
 When Telegram calls succeed again, return to:
 
-- `Telegram Connected`
+- `Telegram Connected · @bot_name`
 
 ---
 
@@ -450,7 +457,8 @@ Use Takopi-style behavior as the baseline.
 
 Lock these defaults:
 
-- progress header format: `status · pi · <elapsed> · step <n>`
+- progress header format: `⏳ <elapsed> · step <n>`
+- final header format: `✅ <elapsed>` or `❌ <elapsed>`
 - keep at most **5** recent action lines in progress output
 - file change summaries should show at most **3** inline file paths before overflow summary
 - final body should target **3500 characters max per Telegram message body chunk**

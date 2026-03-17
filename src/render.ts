@@ -82,16 +82,15 @@ function renderActionLine(action: RenderAction): string {
 
 export function renderProgress(run: ActiveRunState, now: number): string {
 	const step = Math.max(1, run.turnIndex);
-	const header = `working · pi · ${formatElapsed(now - run.startedAt)} · step ${step}`;
+	const header = `⏳ ${formatElapsed(now - run.startedAt)} · step ${step}`;
 	const actions = run.actions.slice(-MAX_PROGRESS_ACTIONS).map(renderActionLine);
 	const body = actions.length > 0 ? `\n\n${actions.join("\n")}` : "";
-	const footer = "\n\nreply in Telegram to guide the agent";
-	return `${header}${body}${footer}`;
+	return `${header}${body}`;
 }
 
 export function renderFinal(run: ActiveRunState, now: number): string {
-	const status = run.lastAssistantError ? "error" : "done";
-	const header = `${status} · pi · ${formatElapsed(now - run.startedAt)}`;
+	const prefix = run.lastAssistantError ? "❌" : "✅";
+	const header = `${prefix} ${formatElapsed(now - run.startedAt)}`;
 	const body = run.lastAssistantText?.trim() || (run.lastAssistantError ? "Run failed." : "Run completed.");
 	return `${header}\n\n${body}`;
 }

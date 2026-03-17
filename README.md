@@ -67,7 +67,7 @@ You will be prompted for:
 
 If you message the bot in a private chat, pi auto-fills both the chat id and allowed user id.
 If you use a group chat, pi still asks for the whitelist of allowed user ids.
-If you choose manual chat id entry or manual user-id entry, the setup flow now shows hints for where to get those numeric ids.
+For manual chat id or user id entry, message `@userinfobot` on Telegram to find the numeric ids.
 
 ### 4. Verify the relay
 

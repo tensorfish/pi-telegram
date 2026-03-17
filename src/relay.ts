@@ -24,6 +24,16 @@ export function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function formatTimeAgo(timestamp: number): string {
+	const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+	if (seconds < 5) return "just now";
+	if (seconds < 60) return `${seconds}s ago`;
+	const minutes = Math.floor(seconds / 60);
+	if (minutes < 60) return `${minutes}m ago`;
+	const hours = Math.floor(minutes / 60);
+	return `${hours}h ago`;
+}
+
 export class RelayConnection {
 	config: RelayConfig | null = null;
 	api: TelegramApi | null = null;
@@ -47,6 +57,9 @@ export class RelayConnection {
 
 	private onUpdate: ((update: TelegramUpdate) => Promise<void>) | null = null;
 	private onTestExpiry: (() => Promise<void>) | null = null;
+
+	/** Externally set by the orchestrator so footer can show queue depth. */
+	getQueueLength: () => number = () => 0;
 
 	constructor(private readonly pi: ExtensionAPI) {}
 
@@ -166,12 +179,21 @@ export class RelayConnection {
 		await this.startPolling();
 	}
 
-	// --- Startup message ---
+	// --- Startup / shutdown messages ---
+
+	private get botRef(): string {
+		return this.config?.botUsername ? `@${this.config.botUsername}` : "bot";
+	}
 
 	async sendStartupConnectedMessageIfNeeded(): Promise<void> {
 		if (!this.config?.enabled || !this.api || !this.config.lastValidatedAt) return;
-		const messageId = await this.telegramSend("Telegram relay connected.");
+		const messageId = await this.telegramSend(`🟢 ${this.botRef} connected`);
 		if (messageId !== undefined) this.startupMessageId = messageId;
+	}
+
+	async sendShutdownDisconnectedMessage(): Promise<void> {
+		if (!this.config?.enabled || !this.api || !this.isConnected()) return;
+		await this.telegramSend(`🔴 ${this.botRef} disconnected`);
 	}
 
 	// --- Connection state ---
@@ -183,11 +205,17 @@ export class RelayConnection {
 
 	refreshFooter(): void {
 		if (!this.lastContext?.hasUI) return;
-		let text = this.isConnected() ? "Telegram Connected" : "Telegram Disconnected";
-		if (!this.isConnected() && this.pollRequestInFlight) {
+		let text: string;
+		if (this.isConnected()) {
+			text = `Telegram Connected · ${this.botRef}`;
+			const qLen = this.getQueueLength();
+			if (qLen > 0) text = `${text} · ${qLen} queued`;
+		} else if (this.pollRequestInFlight) {
 			text = `${POLL_SPINNER_FRAMES[this.pollSpinnerIndex]} Telegram Connecting`;
-		} else if (!this.isConnected() && this.retryActive) {
+		} else if (this.retryActive) {
 			text = `Telegram Disconnected · retrying in ${Math.floor(RETRY_INTERVAL_MS / 1000)}s`;
+		} else {
+			text = "Telegram Disconnected";
 		}
 		this.lastContext.ui.setStatus(STATUS_KEY, text);
 	}
@@ -321,11 +349,14 @@ export class RelayConnection {
 		const enabled = this.config?.enabled ? "on" : "off";
 		const chat = this.config?.chatId ?? "not configured";
 		const allowedUsers = this.config ? this.config.allowedUserIds.join(", ") || "none" : "not configured";
+		const lastActivity = this.lastApiSuccessAt ? formatTimeAgo(this.lastApiSuccessAt) : "never";
 		return [
 			"Telegram relay",
 			`Status: ${connection} (${enabled})`,
+			`Bot: ${this.config ? this.botRef : "not configured"}`,
 			`Chat: ${String(chat)}`,
 			`Allowed users: ${allowedUsers}`,
+			`Last activity: ${lastActivity}`,
 			"",
 			"Commands:",
 			"/telegram connect — guided setup",
