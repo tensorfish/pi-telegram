@@ -249,19 +249,20 @@ export class CommandHandler {
 			const token = botToken.trim();
 			const probeApi = new TelegramApi(token);
 			let me;
-			this.relay.setWorkingMessage("Validating Telegram bot token...");
+			this.relay.setWorkingMessage("Validating bot token...");
 			try {
 				me = await probeApi.getMe();
 			} catch (error) {
 				report("connect.validate_bot.failure", { error: error instanceof Error ? error.message : String(error) });
 				ctx.ui.notify("Could not validate bot token from @BotFather.", "error");
 				return;
-			} finally {
-				this.relay.setWorkingMessage();
 			}
+			this.relay.setWorkingMessage(`Connected to @${me.username ?? "unknown"} — preparing chat setup...`);
 			const startOffset = await this.captureSetupOffset(probeApi);
+			this.relay.setWorkingMessage();
 			const resolved = await this.resolveChatTarget(ctx, probeApi, me.id, startOffset);
 			if (!resolved) return;
+			const chatLabel = resolved.chat.type === "private" ? "private chat" : `${resolved.chat.type ?? "chat"} ${resolved.chatId}`;
 			const enableNow = await ctx.ui.confirm(
 				"Enable Telegram relay now?",
 				`Bot: @${me.username ?? "unknown"} (${me.id})\nChat: ${resolved.chatId}${resolved.chat.type ? ` (${resolved.chat.type})` : ""}\nAllowed users: ${resolved.allowedUserIds.join(", ")}`,
@@ -399,6 +400,7 @@ export class CommandHandler {
 					const message = update.message;
 					if (!message?.chat?.id || !message.from?.id || message.from.is_bot) continue;
 					try {
+						this.relay.setWorkingMessage("Message received — validating chat...");
 						const chat = await this.validateChatForRelay(api, message.chat.id, botId);
 						return {
 							captured: { chat, chatId: chat.id, senderId: message.from.id, nextOffset },
@@ -435,13 +437,16 @@ export class CommandHandler {
 			return null;
 		}
 		let chat: TelegramChat;
+		this.relay.setWorkingMessage("Validating chat...");
 		try {
 			chat = await this.validateChatForRelay(api, chatId, botId);
 		} catch (error) {
+			this.relay.setWorkingMessage();
 			report("connect.validate_chat.failure", { chatId, error: error instanceof Error ? error.message : String(error) });
 			ctx.ui.notify("Could not validate chat id.", "error");
 			return null;
 		}
+		this.relay.setWorkingMessage();
 		const allowedUserIds = await this.collectAllowedUserIds(ctx, chat);
 		if (!allowedUserIds) return null;
 		return { chat, chatId: chat.id, allowedUserIds, nextOffset, discoveryMode: "manual" };
