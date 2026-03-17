@@ -1,18 +1,28 @@
 # Overview
 
 ## What is this?
-This is an add-on for the pi agent that lets a running agent connect to Telegram, send updates there, and receive commands back.
+A TypeScript pi extension that relays a running pi agent to Telegram and accepts input back.
 
 ## Who is it for?
-It is for users of pi.dev who want to stay connected to their running agent through Telegram, so they can follow progress and respond without being tied to the main workspace.
+Users of pi who want to monitor and guide their running agent remotely through a Telegram chat.
 
 ## What does it do?
-It acts as a relay between the running agent and Telegram. It sends updates from all agent runs into Telegram and lets approved Telegram users send messages back, making it easier to monitor and guide work from a simple chat interface.
+It acts as a bidirectional relay between pi and one Telegram chat:
 
-Setup stays lightweight: the user provides a bot token from `@BotFather`, then either messages the bot so pi can auto-detect the chat, or manually enters the chat id.
+- **Outbound**: all pi runs produce a single Telegram progress message that is edited in place, then finalized with the result. Long output is split into continuation chunks.
+- **Inbound**: approved Telegram text messages are injected into pi as normal user input. If pi is busy, they queue as follow-up items and drain at turn boundaries or after the run ends. Queue ordering is strict FIFO across all sources. Editing a queued Telegram message updates it in place.
+- **Remote commands**: messages starting with `/telegram` are intercepted by the extension for relay management (`status`, `toggle`, `test`, `logout yes`).
 
-Once connected, the local UI should stay quiet: the footer shows `Telegram Connected` / `Telegram Disconnected`, with only a brief `Telegram Connecting` spinner state before the relay becomes healthy.
+Setup is lightweight: the user provides a bot token from `@BotFather`, then either messages the bot for auto-detection or manually enters the chat id. Private chats auto-derive the allowed user id; group chats require a whitelist.
+
+The local UI stays quiet: the footer shows `Telegram Connected` / `Telegram Disconnected`, with only a brief `⠋ Telegram Connecting` spinner during active connection attempts. On startup with a previously validated config, the relay sends a short connected message to Telegram.
+
+## Implementation status
+All 35 implementation steps are complete. The extension is functional.
 
 ## Documentation roles
-- `README.md` is the human-facing quickstart and usage entrypoint.
-- `SETUP.md` is the installation guide for AI agents and automated helpers.
+- `README.md` — human-facing quickstart and usage entrypoint
+- `SETUP.md` — installation guide for AI agents and automated helpers
+- `.memory/specifications.md` — behavior and UX source of truth
+- `.memory/state-transitions.md` — state model and queue semantics
+- `.memory/implementation-plan.md` — implementation checklist (all complete)

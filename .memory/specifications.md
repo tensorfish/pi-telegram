@@ -515,57 +515,36 @@ Pi has two internal message insertion paths during a run:
 - steering queue via `agent.steer()`
 - follow-up queue via `agent.followUp()`
 
-### Steering queue semantics
-
-Steering messages are consumed mid-run between tool boundaries.
-
-When a steering message is consumed:
-
-- remaining tool calls in the current turn are skipped
-- the steering message is injected into context
-- a new turn starts immediately
-- the run continues inside the same `agent_start` → `agent_end` envelope
-
 ### Follow-up queue semantics
 
-Follow-up messages are consumed only when the agent would otherwise stop.
+V1 uses only the follow-up path for busy-path Telegram input.
+There is no separate steering queue in this version.
 
-When a follow-up message is consumed:
+Follow-up messages are dispatched at two points:
 
-- it becomes the next pending user message
-- a new turn starts immediately
-- the run continues inside the same `agent_start` → `agent_end` envelope
+1. At `turn_end`: if the run is still active and queued items exist, dispatch one item via `followUp` so it extends the current run.
+2. At `agent_end`: after the run finalizes, if queued items remain and pi is idle, dispatch the next item as a new prompt via `sendUserMessage`.
 
-### Telegram default when pi is busy
+### If pi is idle
 
-If a Telegram message arrives while pi is busy, the relay must place it into the **follow-up queue by default**.
+Inject the Telegram message immediately as the next prompt via `sendUserMessage`.
 
-It must **not** create a fresh `agent.prompt()` call after `agent_end`.
+### If pi is busy
 
-That means the busy-path Telegram message is consumed inside the current run if the run continues long enough to reach follow-up consumption.
+Queue the Telegram message into the in-memory follow-up queue.
+
+The queue must then:
+
+- preserve FIFO order across all queued sources
+- drain one item at each `turn_end` boundary via `followUp`
+- after `agent_end`, dispatch remaining items as new prompts if pi is idle
 
 ### Telegram interrupt behavior
 
 V1 does not invent a new interrupt mode.
 
-If a future explicit interrupt feature is added, it may route selected Telegram input to the steering queue.
+If a future explicit interrupt feature is added, it may route selected Telegram input to a steering queue.
 Until then, the default busy-path behavior is follow-up only.
-
-### If pi is idle
-
-Inject the Telegram message immediately as the next prompt.
-
-### If pi is busy
-
-Queue the Telegram message into the follow-up queue.
-
-The queue must then:
-
-- preserve FIFO order across all queued sources
-- drain automatically after the current assistant message ends
-- continue draining one item after another until the queue is empty
-
-This should mirror how queued local terminal prompts behave.
 
 ## Telegram message edits while queued
 
@@ -593,11 +572,23 @@ Sending a new message adds a new queue item.
 
 Telegram may send:
 
-- normal prompts
-- pi commands
-- relay-management commands
+- normal prompts (dispatched as user input to pi)
+- relay-management commands intercepted by the extension
 
-All are accepted through the same input model, subject to the whitelist and chat match rules.
+### Relay-management commands from Telegram
+
+The extension intercepts messages starting with `/telegram` before they reach pi's prompt flow.
+
+Implemented remote commands:
+
+- `/telegram` — sends the human-friendly overview back to Telegram
+- `/telegram status` — sends the deterministic state report back to Telegram
+- `/telegram test` — sends a reply-code test message from Telegram
+- `/telegram toggle` — flips the enabled flag; sends a confirmation message before disabling
+- `/telegram logout yes` — logs out the relay (requires `yes` suffix for confirmation)
+- `/telegram connect` — rejected with a message directing the user to local pi
+
+All other Telegram text messages are accepted as normal prompt input, subject to the whitelist and chat match rules.
 
 ---
 
@@ -757,11 +748,11 @@ The implementation is correct only if all of the following are true:
 10. Final output edits the original progress message.
 11. Long final output uses Takopi-style safe splitting with continuation chunks.
 12. Accepted Telegram messages are injected into pi as normal user input.
-13. If pi is busy, queued input drains automatically after the current assistant message ends.
+13. If pi is busy, queued input drains one item at each `turn_end` via follow-up, and remaining items dispatch as new prompts after `agent_end` if pi is idle.
 14. Queue order is strict FIFO across all sources.
 15. Editing a queued Telegram message updates the queued item in place.
 16. Sending a new Telegram message creates a new FIFO queued item.
-17. Telegram may invoke all commands, including relay-management commands.
+17. Telegram may invoke relay-management commands (`/telegram status`, `/telegram toggle`, `/telegram logout yes`, `/telegram test`) and all other text is treated as normal prompt input.
 18. `Telegram Connected` means the last Telegram API call succeeded within the last 60 seconds.
 19. On startup with an already validated enabled config, the relay attempts a short Telegram connected message to the configured chat.
 20. Runtime failure switches the relay to disconnected immediately and retries every 5 seconds.

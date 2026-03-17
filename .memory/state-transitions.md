@@ -46,7 +46,7 @@ Use these mental-model state variables.
 - `RunState ∈ {Idle, Active}`
 - `RunId` — current active run id or none
 - `TurnIndex` — current turn number inside the active run
-- `AssistantPhase ∈ {Waiting, LLM, ToolPreflight, ToolExecution, TurnBoundary, Ending}`
+- `AssistantPhase ∈ {Waiting, LLM, ToolExecution, TurnBoundary, Ending}`
 - `ProgressMessageId` — Telegram message id for the active run or none
 
 ### Prompt state
@@ -275,19 +275,18 @@ Effects:
 
 Preconditions:
 
-- current turn reaches a boundary where steering or follow-up polling may occur
+- current turn reaches a boundary where follow-up polling may occur
 
 Effects:
 
-- evaluate steering queue first where applicable
-- evaluate follow-up queue only when the agent would otherwise stop
+- evaluate follow-up queue when the agent would otherwise stop
+- v1 does not implement a separate steering queue; all busy-path Telegram input uses the follow-up path
 
 ### `RunEnd`
 
 Preconditions:
 
 - no tool calls remain
-- no steering messages remain
 - no follow-up messages remain
 
 Effects:
@@ -297,6 +296,7 @@ Effects:
 - set `RunState = Idle`
 - clear `RunId`
 - clear `ProgressMessageId`
+- attempt to dispatch the next queued Telegram input as a new prompt if idle
 
 ---
 
@@ -379,34 +379,23 @@ Effects:
 
 ## Queue consumption semantics
 
-## Steering path
-
-Steering messages are consumed:
-
-- at the start of the run
-- after tool-call boundaries where pi polls steering messages
-
-If a steering message is consumed:
-
-- remaining tool calls in the current turn are skipped
-- the steering message enters context
-- a new turn begins immediately
-- `RunState` stays `Active`
-
 ## Follow-up path
 
-Follow-up messages are consumed only when:
+V1 uses only the follow-up path for busy-path Telegram input.
+There is no separate steering queue in this version.
 
-- no more tool calls remain in the current turn, and
-- no steering messages are pending
+Follow-up messages are consumed at turn boundaries (`turn_end` events) and when the agent ends (`agent_end`).
 
-If a follow-up message exists:
+At `turn_end`:
 
-- it becomes the next pending message
+- if queued items exist and the run is still active, dispatch one item via `followUp`
 - the run continues with another turn
 - `RunState` stays `Active`
 
-This is the default busy-path Telegram behavior.
+At `agent_end`:
+
+- finalize the current run
+- if queued items remain and pi is now idle, dispatch the next item as a new prompt via `sendUserMessage`
 
 ---
 
@@ -444,18 +433,16 @@ stateDiagram-v2
         LLMTurn --> ToolPhase: tool calls emitted
         LLMTurn --> FollowUpCheck: no tool calls remain
 
-        ToolPhase --> SteerCheck: tool boundary reached
-        SteerCheck --> LLMTurn: steering message consumed / new turn
-        SteerCheck --> ToolPhase: no steering / more tool work
-        SteerCheck --> FollowUpCheck: no more tool calls remain
+        ToolPhase --> FollowUpCheck: tool execution completes
 
-        FollowUpCheck --> LLMTurn: follow-up message consumed / new turn
+        FollowUpCheck --> LLMTurn: follow-up message consumed at turn_end / new turn
         FollowUpCheck --> TurnDone: no follow-up messages remain
     }
 
     TurnActive --> TurnActive: queued Telegram message arrives while busy / enqueue follow-up item
     TurnActive --> TurnActive: queued Telegram message edited before dispatch / update queued item in place
-    TurnActive --> Idle: no tool calls, no steering, no follow-ups / agent_end
+    TurnActive --> Idle: no tool calls, no follow-ups / agent_end
+    Idle --> RunStart: queued item dispatched as new prompt after agent_end
 ```
 
 ---
@@ -464,12 +451,13 @@ stateDiagram-v2
 
 The implementation must preserve these consequences:
 
-1. Busy-path Telegram input extends the current run through the follow-up path.
-2. Busy-path Telegram input is not turned into a fresh prompt after `agent_end`.
+1. Busy-path Telegram input extends the current run through the follow-up path when dispatched at `turn_end`.
+2. After `agent_end`, remaining queued items are dispatched as new prompts if pi is idle.
 3. New Telegram messages enqueue new FIFO items.
 4. Edits of queued Telegram messages update the queued item keyed by Telegram `message_id`.
 5. All pi runs relay to Telegram while connected.
 6. Connection health and retry are independent from prompt queue lifetime inside the same process.
+7. Logout clears config and relay state but preserves the in-memory prompt queue.
 
 ---
 
@@ -480,6 +468,7 @@ A human or AI should be able to verify this model through:
 - `/telegram` for the human-friendly relay overview
 - `/telegram status` for the deterministic raw state report
 - footer state visibility
-- queue reports with sequence numbers
+- queue reports with sequence numbers (visible via `PI_TELEGRAM_DEBUG=1`)
 - run reports with run id, turn index, and progress message id
 - retry reports with log path and attempt count
+- remote Telegram commands (`/telegram status`, `/telegram toggle`, `/telegram logout yes`, `/telegram test`)

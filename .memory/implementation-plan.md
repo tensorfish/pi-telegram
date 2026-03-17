@@ -6,25 +6,23 @@ This plan must be implemented in a way that preserves `.memory/state-transitions
 
 ## Current build status
 
-Implementation has begun.
+All 35 implementation steps are complete.
 
-Current project files added for execution:
+Project files:
 
-- `package.json`
-- `tsconfig.json`
-- `index.ts`
-- `src/types.ts`
-- `src/config.ts`
-- `src/telegram-api.ts`
-- `src/render.ts`
-- `src/index.ts`
+- `package.json` — extension manifest
+- `tsconfig.json` — TypeScript config
+- `index.ts` — extension entrypoint (re-exports `src/index.ts`)
+- `src/types.ts` — relay types, error classes, queue and run state interfaces
+- `src/config.ts` — config read/write/delete, failure log helpers
+- `src/telegram-api.ts` — Telegram Bot API client with error classification
+- `src/render.ts` — progress/final rendering, Takopi-style splitting
+- `src/index.ts` — `TelegramRelayController` class: commands, polling, queue, run lifecycle, remote commands
 
-These files establish the initial extension skeleton, relay config handling, Telegram API client, rendering layer, and command / polling runtime.
+Documentation:
 
-Documentation is now split intentionally:
-
-- `README.md` is the human quickstart and usage entrypoint.
-- `SETUP.md` is the AI-agent installation guide.
+- `README.md` — human quickstart and usage entrypoint
+- `SETUP.md` — AI-agent installation guide
 
 Plan rules:
 
@@ -36,7 +34,7 @@ Plan rules:
 
 ---
 
-## Step 1 — Load the TypeScript extension
+## Step 1 — Load the TypeScript extension ✅
 
 ### Goal
 Make the TypeScript pi extension load and register `/telegram`.
@@ -47,7 +45,7 @@ Make the TypeScript pi extension load and register `/telegram`.
 
 ---
 
-## Step 2 — Show footer connection state
+## Step 2 — Show footer connection state ✅
 
 ### Goal
 Show relay state in the footer using `Telegram Connected` or `Telegram Disconnected`, with a small `<spinner> Telegram Connecting` animation only while the relay is still becoming healthy.
@@ -58,7 +56,7 @@ Show relay state in the footer using `Telegram Connected` or `Telegram Disconnec
 
 ---
 
-## Step 3 — Lock the config path and schema
+## Step 3 — Lock the config path and schema ✅
 
 ### Goal
 Use only `~/.pi/agent/pi-telegram.json` and enforce the fixed config shape.
@@ -69,7 +67,7 @@ Use only `~/.pi/agent/pi-telegram.json` and enforce the fixed config shape.
 
 ---
 
-## Step 4 — Load saved config on startup
+## Step 4 — Load saved config on startup ✅
 
 ### Goal
 Read `~/.pi/agent/pi-telegram.json` at startup, restore the saved relay preference, and if the saved config was already validated try a short Telegram connection message immediately.
@@ -80,7 +78,7 @@ Read `~/.pi/agent/pi-telegram.json` at startup, restore the saved relay preferen
 
 ---
 
-## Step 5 — Validate the bot token
+## Step 5 — Validate the bot token ✅
 
 ### Goal
 Validate a provided bot token and resolve bot username and bot id.
@@ -91,7 +89,7 @@ Validate a provided bot token and resolve bot username and bot id.
 
 ---
 
-## Step 6 — Resolve and validate the chat
+## Step 6 — Resolve and validate the chat ✅
 
 ### Goal
 Support both chat-discovery paths: auto-detect from a message sent to the bot, or manually pasted numeric chat id, then validate with `getChat(chatId)` and `getChatMember(chatId, botId)`.
@@ -102,7 +100,7 @@ Support both chat-discovery paths: auto-detect from a message sent to the bot, o
 
 ---
 
-## Step 7 — Collect and validate allowed user ids
+## Step 7 — Collect and validate allowed user ids ✅
 
 ### Goal
 Auto-fill the whitelist for private chats and require a CSV whitelist for group chats.
@@ -113,7 +111,7 @@ Auto-fill the whitelist for private chats and require a CSV whitelist for group 
 
 ---
 
-## Step 8 — Build the `/telegram connect` flow
+## Step 8 — Build the `/telegram connect` flow ✅
 
 ### Goal
 Create the guided connect flow that collects the bot token, offers auto-detect or manual chat setup, derives or collects allowed user ids as needed, writes config, and optionally enables the relay.
@@ -124,7 +122,7 @@ Create the guided connect flow that collects the bot token, offers auto-detect o
 
 ---
 
-## Step 9 — Add setup hints
+## Step 9 — Add setup hints ✅
 
 ### Goal
 Show short hints in the connect flow telling the user that the bot token comes from `@BotFather`, that they can message the bot for auto-detection, how to find a manual chat id, how to find user ids for group whitelists, and that group chats still require a whitelist.
@@ -135,7 +133,7 @@ Show short hints in the connect flow telling the user that the bot token comes f
 
 ---
 
-## Step 10 — Build `/telegram toggle`
+## Step 10 — Build `/telegram toggle` ✅
 
 ### Goal
 Allow connect and disconnect without losing saved credentials.
@@ -146,7 +144,7 @@ Allow connect and disconnect without losing saved credentials.
 
 ---
 
-## Step 11 — Build `/telegram logout`
+## Step 11 — Build `/telegram logout` ✅
 
 ### Goal
 Forget saved credentials by deleting the config file and disconnecting the relay without removing prompts already accepted into pi’s prompt flow.
@@ -157,7 +155,7 @@ Forget saved credentials by deleting the config file and disconnecting the relay
 
 ---
 
-## Step 12 — Build `/telegram status`
+## Step 12 — Build `/telegram status` ✅
 
 ### Goal
 Return the exact deterministic key-value report required by the spec.
@@ -168,7 +166,7 @@ Return the exact deterministic key-value report required by the spec.
 
 ---
 
-## Step 13 — Build `/telegram test`
+## Step 13 — Build `/telegram test` ✅
 
 ### Goal
 Send a one-time reply-code test message and validate the full outbound and inbound path.
@@ -179,7 +177,7 @@ Send a one-time reply-code test message and validate the full outbound and inbou
 
 ---
 
-## Step 14 — Accept inbound Telegram messages only from the configured chat
+## Step 14 — Accept inbound Telegram messages only from the configured chat ✅
 
 ### Goal
 Reject Telegram messages from other chats.
@@ -190,7 +188,7 @@ Reject Telegram messages from other chats.
 
 ---
 
-## Step 15 — Enforce the sender whitelist
+## Step 15 — Enforce the sender whitelist ✅
 
 ### Goal
 Accept inbound Telegram messages only from whitelisted user ids.
@@ -201,7 +199,7 @@ Accept inbound Telegram messages only from whitelisted user ids.
 
 ---
 
-## Step 16 — Relay all pi runs
+## Step 16 — Relay all pi runs ✅
 
 ### Goal
 Ensure that all pi runs, including local-terminal-originated runs, produce Telegram progress updates while connected.
@@ -212,7 +210,7 @@ Ensure that all pi runs, including local-terminal-originated runs, produce Teleg
 
 ---
 
-## Step 17 — Inject Telegram input immediately when pi is idle
+## Step 17 — Inject Telegram input immediately when pi is idle ✅
 
 ### Goal
 Treat an accepted Telegram message as the next prompt immediately when pi is idle.
@@ -223,7 +221,7 @@ Treat an accepted Telegram message as the next prompt immediately when pi is idl
 
 ---
 
-## Step 18 — Queue busy Telegram input via follow-up
+## Step 18 — Queue busy Telegram input via follow-up ✅
 
 ### Goal
 When pi is busy, place accepted Telegram input into the follow-up path instead of interrupting the active assistant message.
@@ -234,7 +232,7 @@ When pi is busy, place accepted Telegram input into the follow-up path instead o
 
 ---
 
-## Step 19 — Preserve FIFO across all queued sources
+## Step 19 — Preserve FIFO across all queued sources ✅
 
 ### Goal
 Use strict FIFO ordering across both local queued input and Telegram queued input.
@@ -245,7 +243,7 @@ Use strict FIFO ordering across both local queued input and Telegram queued inpu
 
 ---
 
-## Step 20 — Update queued Telegram messages when edited
+## Step 20 — Update queued Telegram messages when edited ✅
 
 ### Goal
 If a queued Telegram message is edited before dispatch, replace the queued text in place without changing queue position.
@@ -256,7 +254,7 @@ If a queued Telegram message is edited before dispatch, replace the queued text 
 
 ---
 
-## Step 21 — Queue new Telegram messages as new FIFO items
+## Step 21 — Queue new Telegram messages as new FIFO items ✅
 
 ### Goal
 Treat a brand-new Telegram message as a new queued item even if another queued message from the same sender already exists.
@@ -267,7 +265,7 @@ Treat a brand-new Telegram message as a new queued item even if another queued m
 
 ---
 
-## Step 22 — Consume follow-up queue inside the active run
+## Step 22 — Consume follow-up queue inside the active run ✅
 
 ### Goal
 Drain queued prompts automatically, one after another, inside the same run after the current assistant message ends.
@@ -278,7 +276,7 @@ Drain queued prompts automatically, one after another, inside the same run after
 
 ---
 
-## Step 23 — Create one progress message per run
+## Step 23 — Create one progress message per run ✅
 
 ### Goal
 Start one Telegram progress message for each run.
@@ -289,7 +287,7 @@ Start one Telegram progress message for each run.
 
 ---
 
-## Step 24 — Edit progress only on meaningful delta
+## Step 24 — Edit progress only on meaningful delta ✅
 
 ### Goal
 Update the progress message only when the rendered content changes.
@@ -300,7 +298,7 @@ Update the progress message only when the rendered content changes.
 
 ---
 
-## Step 25 — Apply Takopi-style rendering limits
+## Step 25 — Apply Takopi-style rendering limits ✅
 
 ### Goal
 Use the locked Takopi-style rendering defaults for action count, file summary clamping, and safe final chunk sizing.
@@ -311,7 +309,7 @@ Use the locked Takopi-style rendering defaults for action count, file summary cl
 
 ---
 
-## Step 26 — Edit the final result into the original progress message
+## Step 26 — Edit the final result into the original progress message ✅
 
 ### Goal
 Turn the original progress message into the final run result instead of sending a separate final message.
@@ -322,7 +320,7 @@ Turn the original progress message into the final run result instead of sending 
 
 ---
 
-## Step 27 — Split oversized final output safely
+## Step 27 — Split oversized final output safely ✅
 
 ### Goal
 If final output is too large, edit the original message into chunk 1 and send continuation chunks for the rest.
@@ -333,7 +331,7 @@ If final output is too large, edit the original message into chunk 1 and send co
 
 ---
 
-## Step 28 — Define connected from recent API success
+## Step 28 — Define connected from recent API success ✅
 
 ### Goal
 Make `Telegram Connected` mean the last Telegram API call succeeded within the last 60 seconds, while allowing only a brief `<spinner> Telegram Connecting` state before the relay becomes healthy.
@@ -344,7 +342,7 @@ Make `Telegram Connected` mean the last Telegram API call succeeded within the l
 
 ---
 
-## Step 29 — Retry every 5 seconds after connection-affecting failure
+## Step 29 — Retry every 5 seconds after connection-affecting failure ✅
 
 ### Goal
 On a connection-affecting Telegram API failure, switch to disconnected and retry automatically every 5 seconds until success.
@@ -355,7 +353,7 @@ On a connection-affecting Telegram API failure, switch to disconnected and retry
 
 ---
 
-## Step 30 — Write newline-delimited JSON failure logs
+## Step 30 — Write newline-delimited JSON failure logs ✅
 
 ### Goal
 Write repeated failure episodes to `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log` using newline-delimited JSON entries.
@@ -366,7 +364,7 @@ Write repeated failure episodes to `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log` using
 
 ---
 
-## Step 31 — Keep queue on disconnect and reconnect
+## Step 31 — Keep queue on disconnect and reconnect ✅
 
 ### Goal
 Preserve the in-memory queue across relay disconnect and reconnect inside the same pi process.
@@ -377,7 +375,7 @@ Preserve the in-memory queue across relay disconnect and reconnect inside the sa
 
 ---
 
-## Step 32 — Drop queue on restart or extension reload
+## Step 32 — Drop queue on restart or extension reload ✅
 
 ### Goal
 Do not persist queued prompts across pi restart or extension reload.
@@ -388,7 +386,7 @@ Do not persist queued prompts across pi restart or extension reload.
 
 ---
 
-## Step 33 — Reject captions and non-text prompt input
+## Step 33 — Reject captions and non-text prompt input ✅
 
 ### Goal
 Accept only normal Telegram text messages for prompt injection in v1 and reject captions and non-text input.
@@ -399,7 +397,7 @@ Accept only normal Telegram text messages for prompt injection in v1 and reject 
 
 ---
 
-## Step 34 — Preserve already-accepted prompts across logout
+## Step 34 — Preserve already-accepted prompts across logout ✅
 
 ### Goal
 Ensure `/telegram logout` removes relay credentials and disconnects the relay without removing prompt items already accepted into pi’s prompt flow.
@@ -410,7 +408,7 @@ Ensure `/telegram logout` removes relay credentials and disconnects the relay wi
 
 ---
 
-## Step 35 — Lock documentation to implementation
+## Step 35 — Lock documentation to implementation ✅
 
 ### Goal
 Make doc maintenance part of the implementation process.
