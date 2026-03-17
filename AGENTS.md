@@ -39,6 +39,7 @@ When working in this repo, the AI must:
 - relay all pi runs while Telegram is connected
 - treat inbound Telegram messages as normal user input for pi
 - make `/telegram` human-friendly by default and reserve `/telegram status` for the raw deterministic report
+- support `/telegram clear` to remove Telegram footer and working messages from the TUI without changing relay state
 - support connect-flow chat discovery either by messaging the bot or by manual chat id entry
 - make setup hints explicit about where to get the bot token, manual chat ids, and manual user ids
 - use the follow-up path by default for busy Telegram input so it extends the current run

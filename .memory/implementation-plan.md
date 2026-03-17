@@ -6,7 +6,7 @@ This plan must be implemented in a way that preserves `.memory/state-transitions
 
 ## Current build status
 
-All 35 implementation steps are complete. Source has been refactored into focused modules.
+All 36 implementation steps are complete. Source has been refactored into focused modules.
 
 Source modules:
 
@@ -425,3 +425,14 @@ Make doc maintenance part of the implementation process.
 ### Validation test
 - Human-in-the-loop verification: after any behavior change, confirm `.memory/`, `README.md`, and `AGENTS.md` changed in the same work.
 - AI feedback loop verification: emit a doc-update checklist report that lists whether `.memory/specifications.md`, `.memory/state-transitions.md`, `.memory/implementation-plan.md`, `README.md`, and `AGENTS.md` were reviewed and updated.
+
+---
+
+## Step 36 — Add `/telegram clear` command ✅
+
+### Goal
+Allow the user to clear Telegram-related TUI elements (footer status line and working messages) without changing connection state, config, or queue.
+
+### Validation test
+- Human-in-the-loop verification: run `/telegram clear` and confirm the Telegram footer and any working messages are removed from the TUI. Confirm the relay continues operating normally and the footer reappears on the next refresh cycle if the relay is still active.
+- AI feedback loop verification: emit a clear report confirming footer and working message were cleared.

@@ -352,6 +352,15 @@ Rules:
 - do **not** remove prompt items that were already accepted into pi’s prompt flow
 - set footer to disconnected
 
+### `/telegram clear`
+
+Rules:
+
+- clear the Telegram footer status line from the TUI
+- clear any active working message
+- do not change connection state, config, or queue
+- the footer will reappear on the next refresh cycle if the relay is still active
+
 ### `/telegram status`
 
 This command is the deterministic state report for both humans and AI.
@@ -595,6 +604,7 @@ Implemented remote commands:
 - `/telegram toggle` — flips the enabled flag; sends a confirmation message before disabling
 - `/telegram logout yes` — logs out the relay (requires `yes` suffix for confirmation)
 - `/telegram connect` — rejected with a message directing the user to local pi
+- `/telegram clear` — clears the Telegram footer and working messages from the local TUI
 
 All other Telegram text messages are accepted as normal prompt input, subject to the whitelist and chat match rules.
 

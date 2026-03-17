@@ -364,6 +364,7 @@ export class RelayConnection {
 			"/telegram test — verify outbound and inbound relay",
 			"/telegram toggle — enable or disable the relay",
 			"/telegram logout — remove saved credentials",
+			"/telegram clear — clear Telegram footer and working messages from the TUI",
 		].join("\n");
 	}
 }

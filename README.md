@@ -97,6 +97,7 @@ Once connected:
 - `/telegram toggle` — enable or disable relay without deleting credentials
 - `/telegram logout` — remove saved credentials and disconnect relay
 - `/telegram connect` — run the setup flow again
+- `/telegram clear` — clear Telegram footer and working messages from the TUI
 
 ## Files on disk
 

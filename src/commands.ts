@@ -84,6 +84,9 @@ export class CommandHandler {
 			case "test":
 				await this.runRelayTest(ctx);
 				return;
+			case "clear":
+				this.clearTUI(ctx);
+				return;
 			default:
 				ctx.ui.notify(this.relay.buildCommandHelpText(), "warning");
 		}
@@ -116,6 +119,12 @@ export class CommandHandler {
 					void this.logoutCore();
 				}
 				break;
+			case "clear":
+				this.relay.setWorkingMessage();
+				this.relay.clearFooter();
+				report("clear", { remote: true });
+				void this.relay.telegramSend("Telegram TUI cleared.");
+				break;
 			case "connect":
 				void this.relay.telegramSend("Remote connect is not available. Use local /telegram connect.");
 				break;
@@ -123,6 +132,15 @@ export class CommandHandler {
 				void this.relay.telegramSend(this.relay.buildCommandHelpText());
 		}
 		return true;
+	}
+
+	// --- Clear TUI ---
+
+	clearTUI(ctx: ExtensionCommandContext): void {
+		this.relay.setWorkingMessage();
+		this.relay.clearFooter();
+		report("clear", {});
+		ctx.ui.notify("Telegram TUI cleared.", "info");
 	}
 
 	// --- Test ---
