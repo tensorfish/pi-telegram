@@ -3,9 +3,9 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type { FailureLogEntry, RelayConfig } from "./types.ts";
 
-export const AGENT_DIR = join(homedir(), ".pi", "agent");
+const AGENT_DIR = join(homedir(), ".pi", "agent");
 export const CONFIG_PATH = join(AGENT_DIR, "pi-telegram.json");
-export const FAILURE_LOG_DIR = join(homedir(), ".pi", "pi-telegram");
+const FAILURE_LOG_DIR = join(homedir(), ".pi", "pi-telegram");
 
 export async function readRelayConfig(): Promise<RelayConfig | null> {
 	try {
@@ -30,7 +30,15 @@ export async function writeRelayConfig(config: RelayConfig): Promise<void> {
 	} catch (error) {
 		if ((error as { code?: string }).code !== "ENOENT") throw error;
 	}
-	const merged = { ...existing, ...config };
+	// Deep-merge top-level keys; for nested objects, prefer new config values
+	// but preserve unknown top-level keys from existing file
+	const merged: Record<string, unknown> = {};
+	for (const key of Object.keys(existing)) {
+		merged[key] = existing[key];
+	}
+	for (const key of Object.keys(config)) {
+		merged[key] = (config as Record<string, unknown>)[key];
+	}
 	const tmpPath = `${CONFIG_PATH}.tmp-${process.pid}-${Date.now()}`;
 	await writeFile(tmpPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
 	await rename(tmpPath, CONFIG_PATH);

@@ -6,6 +6,13 @@ This repository is for a **TypeScript pi extension** that relays information bet
 
 The implementation entrypoint is `index.ts`, with relay code under `src/`.
 
+Source is split into focused modules:
+
+- `src/relay.ts` — polling lifecycle, connection state, footer
+- `src/commands.ts` — local and remote command handlers, connect flow
+- `src/queue.ts` — prompt queue and dispatch
+- `src/index.ts` — event wiring orchestrator
+
 Documentation roles:
 
 - `README.md` is the human entrypoint and quickstart

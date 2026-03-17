@@ -6,18 +6,27 @@ This plan must be implemented in a way that preserves `.memory/state-transitions
 
 ## Current build status
 
-All 35 implementation steps are complete.
+All 35 implementation steps are complete. Source has been refactored into focused modules.
 
-Project files:
+Source modules:
 
-- `package.json` — extension manifest
-- `tsconfig.json` — TypeScript config
+- `src/relay.ts` — polling lifecycle, connection state, footer, Telegram send/edit
+- `src/commands.ts` — local and remote command handlers, connect flow
+- `src/queue.ts` — prompt queue and dispatch logic
+- `src/render.ts` — progress and final message rendering
+- `src/telegram-api.ts` — raw Telegram Bot API client with AbortSignal support
+- `src/types.ts` — shared type definitions
+- `src/config.ts` — config file read/write/delete with atomic writes
+- `src/index.ts` — thin orchestrator wiring events to the modules above
 - `index.ts` — extension entrypoint (re-exports `src/index.ts`)
-- `src/types.ts` — relay types, error classes, queue and run state interfaces
-- `src/config.ts` — config read/write/delete, failure log helpers
-- `src/telegram-api.ts` — Telegram Bot API client with error classification
-- `src/render.ts` — progress/final rendering, Takopi-style splitting
-- `src/index.ts` — `TelegramRelayController` class: commands, polling, queue, run lifecycle, remote commands
+
+Key implementation details:
+
+- progress edits throttled to at most one every 2 seconds to avoid Telegram rate limits
+- startup sends the connection message before starting the poll loop to avoid 409 conflicts
+- reconnection spinner stays visible during the retry sleep gap
+- failed idle dispatch falls back to enqueueing instead of dropping the prompt
+- `captureSetupOffset` retries on 409 conflicts up to 3 times
 
 Documentation:
 

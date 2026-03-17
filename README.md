@@ -103,6 +103,19 @@ Once connected:
 - relay config: `~/.pi/agent/pi-telegram.json`
 - failure logs: `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log`
 
+## Architecture
+
+The extension source is split into focused modules:
+
+- `src/relay.ts` — polling lifecycle, footer, connection state, Telegram send/edit
+- `src/commands.ts` — local and remote command handlers, connect flow
+- `src/queue.ts` — prompt queue and dispatch logic
+- `src/render.ts` — progress and final message rendering
+- `src/telegram-api.ts` — raw Telegram Bot API client
+- `src/types.ts` — shared type definitions
+- `src/config.ts` — config file read/write/delete
+- `src/index.ts` — extension entrypoint wiring events to the modules above
+
 ## More documentation
 
 - `SETUP.md` — installation guide for AI agents and automated helpers
