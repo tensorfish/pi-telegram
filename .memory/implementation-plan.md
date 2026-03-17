@@ -1,275 +1,398 @@
 # Implementation Plan
 
-This is the build plan for the project.
+This is the execution plan for the Telegram relay.
 
-Rules for this plan:
+This plan must be implemented in a way that preserves `.memory/state-transitions.md`.
+
+Plan rules:
 
 - each step is small
 - each step has one goal
 - each step contains no code
 - each step includes a validation test
-- each completed step must also trigger doc updates in `.memory/`, `README.md`, and `AGENTS.md`
+- every completed implementation change must also update `.memory/`, `README.md`, and `AGENTS.md`
 
 ---
 
-## Step 1 — Load the extension
+## Step 1 — Load the TypeScript extension
 
 ### Goal
-Make the TypeScript pi extension load successfully and expose the `/telegram` command.
+Make the TypeScript pi extension load and register `/telegram`.
 
 ### Validation test
 - Human-in-the-loop verification: start pi with the extension enabled and confirm `/telegram` appears in command discovery.
-- AI feedback loop verification: capture a command listing or status output that shows the extension loaded and the `/telegram` command registered.
+- AI feedback loop verification: record a command list or extension state report showing `/telegram` is registered.
 
 ---
 
-## Step 2 — Show a simple local status
+## Step 2 — Show footer connection state
 
 ### Goal
-Show a persistent footer status with only two steady states: `TG disconnected` or `TG connected`.
+Show relay state in the footer using `TG connected` or `TG disconnected`.
 
 ### Validation test
-- Human-in-the-loop verification: start pi with no Telegram connection and confirm the footer shows `TG disconnected`.
-- AI feedback loop verification: expose a status report that includes the current footer state.
+- Human-in-the-loop verification: start pi with no valid connection and confirm the footer shows `TG disconnected`.
+- AI feedback loop verification: emit a state report with the current footer value.
 
 ---
 
-## Step 3 — Define the config file contract
+## Step 3 — Lock the config path and schema
 
 ### Goal
-Use only `~/.pi/agent/pi-telegram.json` as the relay config source.
+Use only `~/.pi/agent/pi-telegram.json` and enforce the fixed config shape.
 
 ### Validation test
-- Human-in-the-loop verification: confirm there is no config lookup outside `~/.pi/agent/pi-telegram.json`.
-- AI feedback loop verification: expose a state report that includes the active config path and whether the file exists.
+- Human-in-the-loop verification: confirm there is no read or write path outside `~/.pi/agent/pi-telegram.json`.
+- AI feedback loop verification: emit a config report showing active path, schema version, and parsed fields.
 
 ---
 
-## Step 4 — Read saved relay state
+## Step 4 — Load saved config on startup
 
 ### Goal
-Load saved Telegram relay state from `~/.pi/agent/pi-telegram.json` on startup.
+Read `~/.pi/agent/pi-telegram.json` at startup and restore the saved relay preference.
 
 ### Validation test
-- Human-in-the-loop verification: prepare the config file, restart pi, and confirm the extension reads it.
-- AI feedback loop verification: emit a startup state report showing whether config was found and what connection mode was requested.
+- Human-in-the-loop verification: create the config file, restart pi, and confirm the relay restores the saved state.
+- AI feedback loop verification: emit a startup report showing config found, enabled flag, and parsed config values.
 
 ---
 
 ## Step 5 — Validate the bot token
 
 ### Goal
-Confirm that a provided bot token is valid and identify the bot.
+Validate a provided bot token and resolve bot username and bot id.
 
 ### Validation test
-- Human-in-the-loop verification: enter a valid token and see a clear success message that identifies the bot; enter an invalid token and see a clear failure message.
-- AI feedback loop verification: emit a structured validation result with success or failure and the resolved bot identity when present.
+- Human-in-the-loop verification: enter a valid token and confirm both bot username and bot id are shown; enter an invalid token and confirm a clear failure message.
+- AI feedback loop verification: emit a structured validation result with success flag, bot username, and bot id when valid.
 
 ---
 
 ## Step 6 — Validate the chat id
 
 ### Goal
-Confirm that a provided chat id is reachable by the bot.
+Accept a manually pasted numeric chat id and validate it with `getChat(chatId)` and `getChatMember(chatId, botId)`.
 
 ### Validation test
-- Human-in-the-loop verification: enter a valid chat id and see a clear confirmation; enter an invalid or unreachable chat id and see a clear failure.
-- AI feedback loop verification: emit a structured validation result with the chat id and reachability status.
+- Human-in-the-loop verification: enter a valid numeric chat id and confirm success; enter an invalid or unreachable chat id and confirm failure.
+- AI feedback loop verification: emit a validation result with chat id, parse status, `getChat` result, and `getChatMember` result.
 
 ---
 
-## Step 7 — Build the `/telegram connect` flow
+## Step 7 — Collect and validate allowed user ids
 
 ### Goal
-Provide a guided connect flow that collects token and chat id, validates both, saves config, and optionally enables the relay.
+Accept a CSV of allowed Telegram user ids and convert it into a numeric whitelist.
 
 ### Validation test
-- Human-in-the-loop verification: complete the flow without editing files manually and confirm the final state is clear.
-- AI feedback loop verification: expose a final state report showing saved credentials present, selected connection state, and config file written.
+- Human-in-the-loop verification: enter a valid CSV and confirm it is accepted; enter non-numeric values or an empty list and confirm rejection.
+- AI feedback loop verification: emit a whitelist parse report with the final numeric array.
 
 ---
 
-## Step 8 — Save and restore connection preference
+## Step 8 — Build the `/telegram connect` flow
 
 ### Goal
-Persist whether Telegram should connect automatically or remain disconnected after setup.
+Create the guided connect flow that collects token, chat id, allowed user ids, validates them, writes config, and optionally enables the relay.
 
 ### Validation test
-- Human-in-the-loop verification: connect, restart pi, and confirm the same preference is restored.
-- AI feedback loop verification: emit a startup report that shows saved preference and resulting connection state.
+- Human-in-the-loop verification: complete the full flow without manual file editing and confirm the final footer state matches the chosen enable setting.
+- AI feedback loop verification: emit a connect-flow completion report with saved config fields and resulting connection state.
 
 ---
 
-## Step 9 — Build `/telegram toggle`
+## Step 9 — Add setup hints
 
 ### Goal
-Allow the user to connect or disconnect without changing saved credentials.
+Show short hints in the connect flow telling the user where to get chat id, user id, and bot id.
 
 ### Validation test
-- Human-in-the-loop verification: run `/telegram toggle` twice and confirm the footer flips between `TG connected` and `TG disconnected`.
-- AI feedback loop verification: capture before-and-after state reports showing that credentials stay the same while connection state changes.
+- Human-in-the-loop verification: run `/telegram connect` and confirm the hints are visible during setup.
+- AI feedback loop verification: emit a flow-state report showing the hint step was displayed.
 
 ---
 
-## Step 10 — Build `/telegram logout`
+## Step 10 — Build `/telegram toggle`
 
 ### Goal
-Forget saved credentials and return the relay to a disconnected state.
+Allow connect and disconnect without losing saved credentials.
 
 ### Validation test
-- Human-in-the-loop verification: run `/telegram logout`, confirm the relay disconnects, and confirm reconnect setup is required again.
-- AI feedback loop verification: emit a state report showing no saved credentials and a disconnected relay.
+- Human-in-the-loop verification: run `/telegram toggle` twice and confirm the footer flips between connected and disconnected.
+- AI feedback loop verification: emit before-and-after state reports showing only `enabled` and connection state changed.
 
 ---
 
-## Step 11 — Send a manual Telegram message
+## Step 11 — Build `/telegram logout`
 
 ### Goal
-Prove the relay can send a message from pi to Telegram.
+Forget saved credentials by deleting the config file and disconnecting the relay without removing prompts already accepted into pi’s prompt flow.
 
 ### Validation test
-- Human-in-the-loop verification: trigger a manual send and confirm the message appears in the configured Telegram chat.
-- AI feedback loop verification: record a delivery result with message id, destination chat id, and success or failure.
+- Human-in-the-loop verification: run `/telegram logout` and confirm the relay disconnects and the config file is removed; if prompts were already accepted into pi’s prompt flow, confirm they still execute normally.
+- AI feedback loop verification: emit a logout report showing disconnected state, no config file present, and unchanged already-accepted prompt items.
 
 ---
 
-## Step 12 — Receive a Telegram message locally
+## Step 12 — Build `/telegram status`
 
 ### Goal
-Prove the relay can receive a Telegram message from the configured chat.
+Return the exact deterministic key-value report required by the spec.
 
 ### Validation test
-- Human-in-the-loop verification: send a Telegram message and confirm pi shows that the message was received.
-- AI feedback loop verification: emit a structured inbound event with message text, chat id, and acceptance decision.
+- Human-in-the-loop verification: run `/telegram status` and confirm it uses the fixed key-value line format and shows all required fields.
+- AI feedback loop verification: parse the status output as structured state feedback without heuristics.
 
 ---
 
-## Step 13 — Inject Telegram input when pi is idle
+## Step 13 — Build `/telegram test`
 
 ### Goal
-Treat an incoming Telegram message as the next prompt immediately when pi is idle.
+Send a one-time reply-code test message and validate the full outbound and inbound path.
 
 ### Validation test
-- Human-in-the-loop verification: leave pi idle, send a Telegram message, and confirm the agent starts on that exact prompt.
-- AI feedback loop verification: emit a state transition showing inbound Telegram text mapped directly to immediate prompt dispatch.
+- Human-in-the-loop verification: run `/telegram test`, reply with the code from Telegram, and confirm local success output.
+- AI feedback loop verification: emit a test report with sent flag, expected code, reply received flag, match result, and timeout result.
 
 ---
 
-## Step 14 — Queue Telegram input while pi is busy
+## Step 14 — Accept inbound Telegram messages only from the configured chat
 
 ### Goal
-Queue incoming Telegram messages instead of interrupting the active run.
+Reject Telegram messages from other chats.
 
 ### Validation test
-- Human-in-the-loop verification: start a long task, send one Telegram message, and confirm the current run continues while the new message waits.
-- AI feedback loop verification: expose a queue report that shows queue length increasing while the agent is busy.
+- Human-in-the-loop verification: send one message from the configured chat and one from a different chat and confirm only the configured chat is accepted.
+- AI feedback loop verification: emit inbound acceptance reports showing accepted and rejected chat ids.
 
 ---
 
-## Step 15 — Preserve message arrival order
+## Step 15 — Enforce the sender whitelist
 
 ### Goal
-Keep queued Telegram messages in strict first-in, first-out order.
+Accept inbound Telegram messages only from whitelisted user ids.
 
 ### Validation test
-- Human-in-the-loop verification: send multiple Telegram messages during one long run and confirm they are later applied in the same order.
-- AI feedback loop verification: emit enqueue and dispatch order reports and compare them for exact match.
+- Human-in-the-loop verification: send one message from an allowed user and one from a non-allowed user and confirm only the allowed user is accepted.
+- AI feedback loop verification: emit inbound acceptance reports showing sender id and whitelist decision.
 
 ---
 
-## Step 16 — Drain the queue when pi is ready
+## Step 16 — Relay all pi runs
 
 ### Goal
-Deliver queued Telegram messages when the harness is ready for the next user prompt.
+Ensure that all pi runs, including local-terminal-originated runs, produce Telegram progress updates while connected.
 
 ### Validation test
-- Human-in-the-loop verification: after the current run finishes, confirm queued messages begin flowing into pi without manual rescue steps.
-- AI feedback loop verification: expose a queue drain report showing pending count dropping as prompts are dispatched.
+- Human-in-the-loop verification: start one run locally and confirm it creates a Telegram progress message.
+- AI feedback loop verification: emit a run report showing run source and attached Telegram progress message id.
 
 ---
 
-## Step 17 — Start one Telegram progress message per run
+## Step 17 — Inject Telegram input immediately when pi is idle
 
 ### Goal
-Create one Telegram progress message for a run instead of many separate messages.
+Treat an accepted Telegram message as the next prompt immediately when pi is idle.
 
 ### Validation test
-- Human-in-the-loop verification: trigger a run and confirm Telegram receives one progress message for that run.
-- AI feedback loop verification: emit a run report that shows one active progress message id attached to the run.
+- Human-in-the-loop verification: leave pi idle, send a Telegram message, and confirm pi starts that exact prompt.
+- AI feedback loop verification: emit an inbound-to-dispatch transition report showing immediate prompt dispatch.
 
 ---
 
-## Step 18 — Edit progress in place
+## Step 18 — Queue busy Telegram input via follow-up
 
 ### Goal
-Update the same Telegram progress message as work evolves.
+When pi is busy, place accepted Telegram input into the follow-up path instead of interrupting the active assistant message.
 
 ### Validation test
-- Human-in-the-loop verification: watch an active run in Telegram and confirm the same message changes instead of new progress messages appearing.
-- AI feedback loop verification: emit an edit report showing repeated updates against one message id and suppressed no-op updates.
+- Human-in-the-loop verification: start a long run, send a Telegram message, and confirm the current run continues while the new input waits.
+- AI feedback loop verification: emit a queue report showing the item entered follow-up state rather than triggering a fresh prompt call.
 
 ---
 
-## Step 19 — Finish runs cleanly in Telegram
+## Step 19 — Preserve FIFO across all queued sources
 
 ### Goal
-Turn the progress message into a clear final result when the run completes.
+Use strict FIFO ordering across both local queued input and Telegram queued input.
 
 ### Validation test
-- Human-in-the-loop verification: confirm Telegram ends with a readable final result and no stale progress clutter.
-- AI feedback loop verification: emit a finalization report showing the active progress message closed and the final message state recorded.
+- Human-in-the-loop verification: create a mixed sequence of local and Telegram queued prompts and confirm they execute in exact acceptance order.
+- AI feedback loop verification: emit enqueue order and dispatch order reports and confirm they match.
 
 ---
 
-## Step 20 — Handle long Telegram output safely
+## Step 20 — Update queued Telegram messages when edited
 
 ### Goal
-Keep long final output readable by trimming or splitting safely for Telegram.
+If a queued Telegram message is edited before dispatch, replace the queued text in place without changing queue position.
 
 ### Validation test
-- Human-in-the-loop verification: trigger a long response and confirm Telegram still shows readable, well-formed output.
-- AI feedback loop verification: emit a render report showing whether output was trimmed or split and how many Telegram messages were used.
+- Human-in-the-loop verification: queue a Telegram message during a long run, edit that Telegram message before dispatch, and confirm the edited text is what pi later receives.
+- AI feedback loop verification: emit a queue-update report showing one queue item updated in place rather than duplicated.
 
 ---
 
-## Step 21 — Build `/telegram test`
+## Step 21 — Queue new Telegram messages as new FIFO items
 
 ### Goal
-Provide an end-to-end test that confirms both outbound send and inbound reply behavior.
+Treat a brand-new Telegram message as a new queued item even if another queued message from the same sender already exists.
 
 ### Validation test
-- Human-in-the-loop verification: run `/telegram test`, reply with the requested code, and confirm local success feedback.
-- AI feedback loop verification: emit a test report with outbound sent, reply received, match result, and completion status.
+- Human-in-the-loop verification: send two separate Telegram messages during one long run and confirm they later dispatch as two separate prompts in order.
+- AI feedback loop verification: emit queue reports showing two distinct queued items.
 
 ---
 
-## Step 22 — Build `/telegram status`
+## Step 22 — Consume follow-up queue inside the active run
 
 ### Goal
-Provide a simple state report for humans and AI.
+Drain queued prompts automatically, one after another, inside the same run after the current assistant message ends.
 
 ### Validation test
-- Human-in-the-loop verification: run `/telegram status` and confirm it clearly explains connection state, config path, queue size, and active relay state.
-- AI feedback loop verification: use the status output as structured feedback for later validation and debugging.
+- Human-in-the-loop verification: finish the active assistant message and confirm queued prompts continue automatically until the queue is empty without requiring a new outer prompt call.
+- AI feedback loop verification: emit a queue-drain report showing queued count decreasing to zero while the same run id remains active until the queue is exhausted.
 
 ---
 
-## Step 23 — Verify startup and shutdown behavior
+## Step 23 — Create one progress message per run
 
 ### Goal
-Make relay startup, disconnect, reload, and shutdown clean and predictable.
+Start one Telegram progress message for each run.
 
 ### Validation test
-- Human-in-the-loop verification: restart pi, reload the extension, and exit pi while observing that the relay connects or disconnects cleanly.
-- AI feedback loop verification: emit lifecycle reports for startup, connect, disconnect, reload, and shutdown.
+- Human-in-the-loop verification: trigger a run and confirm exactly one Telegram progress message is created for that run.
+- AI feedback loop verification: emit a run state report with one active progress message id.
 
 ---
 
-## Step 24 — Lock documentation to behavior
+## Step 24 — Edit progress only on meaningful delta
 
 ### Goal
-Make documentation maintenance part of the implementation process.
+Update the progress message only when the rendered content changes.
 
 ### Validation test
-- Human-in-the-loop verification: after completing any implementation step, confirm `.memory/`, `README.md`, and `AGENTS.md` were updated if project behavior changed.
-- AI feedback loop verification: add a doc-change checklist to the state report so the AI can verify whether required docs were touched in the same change.
+- Human-in-the-loop verification: watch a run in Telegram and confirm the message edits in place without noisy duplicate updates.
+- AI feedback loop verification: emit edit reports showing actual edits and suppressed no-op renders.
+
+---
+
+## Step 25 — Apply Takopi-style rendering limits
+
+### Goal
+Use the locked Takopi-style rendering defaults for action count, file summary clamping, and safe final chunk sizing.
+
+### Validation test
+- Human-in-the-loop verification: run a task with multiple actions and long output and confirm the Telegram formatting matches the spec limits.
+- AI feedback loop verification: emit a render report showing action count used, inline file count, chunk count, and chunk sizes.
+
+---
+
+## Step 26 — Edit the final result into the original progress message
+
+### Goal
+Turn the original progress message into the final run result instead of sending a separate final message.
+
+### Validation test
+- Human-in-the-loop verification: finish a run and confirm the same Telegram message becomes the final result.
+- AI feedback loop verification: emit a finalization report showing the final state used the original progress message id.
+
+---
+
+## Step 27 — Split oversized final output safely
+
+### Goal
+If final output is too large, edit the original message into chunk 1 and send continuation chunks for the rest.
+
+### Validation test
+- Human-in-the-loop verification: trigger a long final answer and confirm chunk 1 replaces the original message and later chunks are labeled `continued (N/M)`.
+- AI feedback loop verification: emit a split-output report showing original message id, number of chunks, and continuation labels.
+
+---
+
+## Step 28 — Define connected from recent API success
+
+### Goal
+Make `TG connected` mean the last Telegram API call succeeded within the last 60 seconds.
+
+### Validation test
+- Human-in-the-loop verification: keep the relay healthy and confirm the footer stays connected; break the connection and confirm it becomes disconnected.
+- AI feedback loop verification: emit a health report showing last successful API call timestamp and resulting connection state.
+
+---
+
+## Step 29 — Retry every 5 seconds after connection-affecting failure
+
+### Goal
+On a connection-affecting Telegram API failure, switch to disconnected and retry automatically every 5 seconds until success.
+
+### Validation test
+- Human-in-the-loop verification: make Telegram unreachable and confirm the footer switches to disconnected with retry feedback, then reconnect and confirm recovery.
+- AI feedback loop verification: emit retry reports with failure class, failure time, retry interval, attempt count, and recovery time.
+
+---
+
+## Step 30 — Write newline-delimited JSON failure logs
+
+### Goal
+Write repeated failure episodes to `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log` using newline-delimited JSON entries.
+
+### Validation test
+- Human-in-the-loop verification: trigger repeated failures and confirm a log file is created and appended to in the expected directory.
+- AI feedback loop verification: emit a failure-log report showing active log path and sample appended JSON entries.
+
+---
+
+## Step 31 — Keep queue on disconnect and reconnect
+
+### Goal
+Preserve the in-memory queue across relay disconnect and reconnect inside the same pi process.
+
+### Validation test
+- Human-in-the-loop verification: queue Telegram prompts, force a disconnect and reconnect, then confirm the queued prompts still drain afterward.
+- AI feedback loop verification: emit queue state reports before disconnect, during disconnect, and after reconnect showing the same queued items retained.
+
+---
+
+## Step 32 — Drop queue on restart or extension reload
+
+### Goal
+Do not persist queued prompts across pi restart or extension reload.
+
+### Validation test
+- Human-in-the-loop verification: queue prompts, restart pi or reload the extension, and confirm the queue is empty afterward.
+- AI feedback loop verification: emit startup reports showing no queue restored from disk.
+
+---
+
+## Step 33 — Reject captions and non-text prompt input
+
+### Goal
+Accept only normal Telegram text messages for prompt injection in v1 and reject captions and non-text input.
+
+### Validation test
+- Human-in-the-loop verification: send a normal text message and confirm it is accepted; send a caption-only message or other non-text input and confirm it is ignored for prompt injection.
+- AI feedback loop verification: emit inbound acceptance reports showing supported and rejected input types.
+
+---
+
+## Step 34 — Preserve already-accepted prompts across logout
+
+### Goal
+Ensure `/telegram logout` removes relay credentials and disconnects the relay without removing prompt items already accepted into pi’s prompt flow.
+
+### Validation test
+- Human-in-the-loop verification: accept a prompt into pi’s flow, run `/telegram logout`, and confirm the accepted prompt still executes normally.
+- AI feedback loop verification: emit a logout-state report showing relay credentials removed while already-accepted prompt items remain unchanged.
+
+---
+
+## Step 35 — Lock documentation to implementation
+
+### Goal
+Make doc maintenance part of the implementation process.
+
+### Validation test
+- Human-in-the-loop verification: after any behavior change, confirm `.memory/`, `README.md`, and `AGENTS.md` changed in the same work.
+- AI feedback loop verification: emit a doc-update checklist report that lists whether `.memory/specifications.md`, `.memory/state-transitions.md`, `.memory/implementation-plan.md`, `README.md`, and `AGENTS.md` were reviewed and updated.

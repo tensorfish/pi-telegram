@@ -10,6 +10,7 @@ The extension must stay simple:
 - Telegram is only a lightweight relay for updates and replies
 - local persistent UI should answer one question: is Telegram connected or disconnected?
 - Telegram input should behave like normal pi harness input
+- all pi runs should relay to Telegram while connected
 
 ## AI behavior
 
@@ -20,10 +21,17 @@ When working in this repo, the AI must:
 - avoid inventing extra control surfaces, dashboards, side panels, or sidecars
 - keep Telegram output compact and useful
 - prefer editing/updating messages over flooding chat
+- relay all pi runs while Telegram is connected
 - treat inbound Telegram messages as normal user input for pi
-- queue Telegram input in arrival order when pi is busy
+- use the follow-up path by default for busy Telegram input so it extends the current run
+- preserve strict FIFO ordering across all queued input sources
+- update queued Telegram items in place when the source Telegram message is edited before dispatch
+- accept only normal Telegram text messages for prompt input in v1, not captions
+- enforce the configured whitelist of allowed Telegram user ids
+- preserve already-accepted prompt items if the user later runs `/telegram logout`
 - keep the extension implementation in TypeScript
 - use only `~/.pi/agent/pi-telegram.json` for relay config
+- log failure episodes under `~/.pi/pi-telegram/`
 
 ## What the AI must maintain
 
@@ -31,6 +39,7 @@ The AI must keep these files accurate at all times:
 
 - `.memory/overview.md`
 - `.memory/specifications.md`
+- `.memory/state-transitions.md`
 - `.memory/implementation-plan.md`
 - `README.md`
 - `AGENTS.md`
@@ -54,9 +63,10 @@ Minimum expectation for every change:
 
 1. review `.memory/overview.md`
 2. review `.memory/specifications.md`
-3. review `.memory/implementation-plan.md`
-4. update `README.md`
-5. update `AGENTS.md`
+3. review `.memory/state-transitions.md`
+4. review `.memory/implementation-plan.md`
+5. update `README.md`
+6. update `AGENTS.md`
 
 ## Project guardrails
 
@@ -65,8 +75,14 @@ The AI must preserve these core constraints:
 - no side panel or alternate control cockpit
 - no complex persistent local UI
 - footer state stays simple: Telegram connected or disconnected
+- all pi runs relay to Telegram while connected
 - Telegram messages are relayed into pi as if typed into the harness input
-- if pi is busy, Telegram messages wait in queue until pi is ready
+- if pi is busy, Telegram messages enter the follow-up path and are consumed after the current assistant message ends
+- queue ordering is strict FIFO across all sources
+- editing a queued Telegram message updates that queued item in place
+- only whitelisted sender ids in the configured chat may steer the agent
+- captions are not prompt input in v1
+- `/telegram logout` does not remove prompts already accepted into pi’s prompt flow
 - Telegram chat UX should avoid spam and prefer message edits where possible
 - keep the project focused on one bot and one chat for v1
 
@@ -77,8 +93,9 @@ When deciding what to do, use this order:
 1. latest user instruction
 2. `AGENTS.md`
 3. `.memory/specifications.md`
-4. `.memory/implementation-plan.md`
-5. `.memory/overview.md`
-6. `README.md`
+4. `.memory/state-transitions.md`
+5. `.memory/implementation-plan.md`
+6. `.memory/overview.md`
+7. `README.md`
 
 If any of these disagree, update the lower-level docs to match the current truth.

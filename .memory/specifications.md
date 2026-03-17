@@ -2,321 +2,143 @@
 
 ## Goal
 
-Enable a Telegram relay for pi that can:
+Build a **TypeScript pi extension** that relays a running pi agent to Telegram.
 
-- connect a running agent to Telegram
-- push useful live updates into Telegram
-- accept user input from Telegram and feed it back into the running agent
-- stay readable in Telegram instead of flooding the chat with noisy updates
+The relay must:
 
-This builds on `.memory/overview.md` and reflects a review of:
+- send updates for **all pi runs** to Telegram
+- accept Telegram messages and inject them into pi as normal user input
+- keep Telegram readable by editing messages in place instead of flooding chat
+- keep the local pi UI extremely simple
 
-- pi extension and TUI patterns in `../pi-mono`
-- Takopi’s Telegram relay, rendering, queueing, and message-editing behavior in `../takopi`
-
----
-
-## What we are building
-
-This should feel like a **quiet, reliable relay** for a running pi agent.
-
-It must be implemented as a **TypeScript pi extension** and should follow the extension and TUI patterns reviewed in `../pi-mono`.
-
-The user can keep pi open locally, turn Telegram relay on, and then:
-
-- watch progress remotely
-- receive meaningful status updates
-- reply from Telegram to guide the agent
-- verify the connection end to end
-
-The experience should feel like:
-
-- **one live thread of work**, not a spammy log dump
-- **simple control state**, both in pi and in Telegram
-- **simple onboarding**, like `/login`, not like hand-editing config files
-
-There should be **no separate side panel, cockpit, or control surface** inside pi.
-The local pi terminal remains the main control surface.
-Telegram is just the lightweight remote relay for updates and replies.
+This spec is intended to remove implementation ambiguity.
 
 ---
 
-## Key findings from the references
+## Product definition
 
-### From pi-mono
+This project is a **simple Telegram relay**.
 
-1. **Bottom bar state should use `ctx.ui.setStatus()`**
-   - This is the cleanest way to show persistent plugin state without replacing the whole footer.
-   - `status-line.ts` is the closest reference pattern.
+It is **not**:
 
-2. **If we only need an on/off indicator, we should not replace the full footer**
-   - `custom-footer.ts` proves it is possible.
-   - But for this feature, a small footer status is the right UX.
+- a side panel
+- a second control cockpit
+- a separate agent runtime
+- a second queue model
 
-3. **Command UX should be guided and interactive**
-   - pi’s `/login` flow is not a raw prompt dump; it is a guided, stateful interaction.
-   - The Telegram connect flow should behave the same way: prompt, validate, confirm, save.
-
-4. **Extension commands should stay discoverable and small in number**
-   - Too many top-level slash commands make the command menu noisy.
-   - A compact command surface is better.
-
-### From Takopi
-
-1. **Edits beat spam**
-   - Takopi does not send a fresh Telegram message for every event.
-   - It keeps one progress message alive and edits it as work changes.
-   - This is the single most important Telegram UX lesson to copy.
-
-2. **Only send meaningful deltas**
-   - Takopi coalesces updates and only edits when rendered output actually changes.
-   - We should do the same.
-
-3. **Progress and final states should be formatted differently**
-   - Progress messages are compact, action-oriented, and temporary.
-   - Final messages are clearer, calmer, and can include the real answer.
-
-4. **Long messages need Telegram-aware splitting**
-   - Takopi trims or splits long finals.
-   - Splits preserve code fences and add continuation labels.
-   - We want that same discipline.
-
-5. **Outbound message operations need basic queue/coalescing behavior**
-   - A newer edit should replace an older pending edit for the same message.
-   - Final sends should outrank stale progress edits.
-   - This avoids race conditions and chat junk.
+The main control surface remains the pi terminal.
+Telegram is only the lightweight remote relay for updates and input.
 
 ---
 
-## Product behavior
+## Non-negotiable decisions
 
-### High-level behavior
+These decisions are fixed.
 
-The extension should provide a **simple Telegram relay connection**.
+### Relay scope
 
-When enabled, the relay:
+Relay **all pi runs**.
 
-- loads Telegram credentials from its saved extension config
-- connects to Telegram
-- listens for incoming Telegram messages from the configured chat
-- watches pi session / agent events
-- sends compact Telegram updates
-- edits active progress messages in place
+That includes:
 
-When disabled, the relay disconnects cleanly and no Telegram traffic should flow.
+- runs started from the local terminal
+- runs started from Telegram input
+- runs started after queued input is drained
 
-### Lifecycle
+If Telegram is connected and available, every pi run should attempt to produce Telegram updates.
 
-- On startup, load the saved Telegram config.
-- If the saved state is enabled and valid, connect automatically.
-- If the saved state exists but is disabled, show that it is disconnected and do not connect.
-- On logout, disconnect and clear saved credentials.
-- On shutdown or reload, stop polling / background work cleanly.
+### Footer meaning
 
----
+`TG connected` means:
 
-## Recommended command UX
+- relay config exists
+- relay is enabled
+- the connect / polling loop is running
+- the **last Telegram API call succeeded within the last 60 seconds**
 
-## Recommended public command surface
+`TG disconnected` means anything else.
 
-Use **one primary command root**:
+### Queue rule
 
-- `/telegram`
+Queued input across **all sources** is strict FIFO.
 
-Then expose subcommands:
+That means:
 
-- `/telegram connect`
-- `/telegram toggle`
-- `/telegram logout`
-- `/telegram test`
-- `/telegram status`
+- local queued input and Telegram queued input share one effective ordering rule
+- whichever input is accepted first must be delivered first
+- Telegram must not leapfrog terminal input
+- terminal input must not leapfrog Telegram input
 
-### Why this is the best UX
+### Ready-for-next-prompt rule
 
-This is clearer than adding many separate slash commands.
+Pi is considered ready for the next queued prompt **after the current assistant message ends**.
 
-It keeps the command menu clean while still making the feature obvious.
+Not after the current tool call.
+Not after the current partial update.
+Not only after some later manual confirmation.
 
-### Optional aliases
+### Remote command permissions
 
-If we want first-time discoverability, we can add thin aliases:
+Telegram may invoke **all** commands that local pi input may invoke.
 
-- `/telegram-connect` → `/telegram connect`
-- `/telegram-toggle` → `/telegram toggle`
-- `/telegram-logout` → `/telegram logout`
-- `/telegram-test` → `/telegram test`
+That includes:
 
-But the **documented** UX should still be the single `/telegram ...` family.
+- normal pi commands
+- relay-management commands like `/telegram connect`, `/telegram toggle`, `/telegram logout`, `/telegram test`, and `/telegram status`
 
-### Command behavior
+### Chat id flow
 
-#### `/telegram`
+Chat id entry is **manual only**.
 
-Shows current state and help:
+The user must paste a numeric chat id.
+There is no chat-capture flow.
 
-- connected or not
-- enabled or disabled
-- configured chat id
-- whether saved credentials exist
-- last validation result if known
-- available subcommands
+### Queue lifetime
 
-#### `/telegram connect`
-
-Guided setup flow that mimics `/login` in spirit.
-
-Flow:
-
-1. Prompt for bot token.
-2. Validate token immediately.
-3. Prompt for chat id.
-4. Validate chat id immediately.
-5. Save config.
-6. Ask whether to enable now.
-7. Update bottom-bar status immediately.
-8. Offer to run `/telegram test` next.
-
-This should feel like a short setup wizard, not a raw prompt loop.
-
-#### `/telegram toggle`
-
-Flips relay state between enabled and disabled.
+Queued input is **in-memory only**.
 
 Rules:
 
-- If no saved credentials exist, refuse and point the user to `/telegram connect`.
-- If toggled on, connect immediately.
-- If toggled off, disconnect immediately.
-- Always show the resulting state explicitly: do not just say “toggled”.
+- if pi restarts, queued messages are lost
+- if the extension reloads, queued messages are lost
+- if the relay disconnects and reconnects during the same process, keep the same in-memory queue
 
-Example success copy:
+### Final message handling
 
-- `Telegram relay enabled`
-- `Telegram relay disabled`
+The final run result must **edit the same Telegram progress message**.
 
-#### `/telegram logout`
+Do not send a separate final message as the default completion path.
 
-Removes saved Telegram credentials and disables the relay.
+If a long final result must be split for Telegram size limits:
 
-Flow:
+- edit the original progress message into chunk 1
+- send chunk 2+ as continuation messages
 
-1. Ask for confirmation.
-2. Disconnect.
-3. Remove saved token and chat id.
-4. Reset status to disconnected.
+### Group trust model
 
-This is not just “disconnect for now”; it is “forget this Telegram connection”.
+Only accept Telegram input when both are true:
 
-#### `/telegram test`
+- `chat_id` matches the configured chat
+- `sender_id` is in the configured whitelist
 
-Runs an end-to-end connection check.
+The whitelist supports multiple user ids.
 
-Flow:
+### Failure handling
 
-1. Send a test message into Telegram.
-2. In that message, ask the user to reply with a short one-time code.
-3. Wait for a matching reply for a limited amount of time.
-4. On success, confirm that both outbound and inbound paths work.
-5. On timeout, show a clear failure state without breaking the saved connection.
+On any connection-affecting Telegram API failure:
 
-This command should validate the full round trip, not just credentials.
-
-#### `/telegram status`
-
-Recommended even though it was not explicitly requested.
-
-It reduces confusion and gives the user a quick answer to:
-
-- Is it configured?
-- Is it enabled?
-- Is it healthy?
-- What chat is it pointed at?
+- mark the footer disconnected immediately
+- keep retrying automatically every **5 seconds**
+- append repeated failures to a log file under `~/.pi/pi-telegram/`
+- when a Telegram API call succeeds again, mark the footer connected again
 
 ---
 
-## Connect flow details
-
-The connect flow should mimic pi’s `/login` behavior in tone and structure:
-
-- guided
-- step-by-step
-- validated at each step
-- clear success/failure copy
-- no need to hand-edit JSON
-
-### Inputs
-
-The user provides:
-
-- `bot token`
-- `chat_id`
-
-### Validation
-
-Validation should happen immediately.
-
-#### Bot token validation
-
-Validate by connecting to Telegram and resolving bot identity.
-
-Success should show something human-readable, for example:
-
-- `Connected to @my_bot`
-
-Failure should say something clear, for example:
-
-- `Could not validate bot token`
-
-#### Chat id validation
-
-Validate that:
-
-- it parses as a numeric Telegram chat id
-- the bot can access that chat
-
-Important:
-
-- support negative chat ids for groups
-- do not assume only private chats
-
-### Save behavior
-
-After successful validation, save the config and load it automatically on startup.
-
----
-
-## Settings storage
-
-## Preferred location
-
-Use a dedicated extension-owned config file:
-
-- `~/.pi/agent/pi-telegram.json`
-
-This is a better fit for this extension than writing arbitrary extension state into pi’s main settings file.
-
-### Why this is preferable
-
-- keeps extension-owned credentials isolated
-- avoids cluttering `settings.json`
-- makes logout / reset simpler
-- makes debugging easier
-- keeps one obvious file for this feature
-
-## Recommended file shape
-
-```json
-{
-  "enabled": true,
-  "botToken": "123456789:ABCdef...",
-  "chatId": -1001234567890,
-  "lastValidatedAt": "2026-03-17T00:00:00.000Z"
-}
-```
+## Config file
 
 ## Single source of truth
 
-The extension should read and write **only**:
+The relay must read and write **only**:
 
 - `~/.pi/agent/pi-telegram.json`
 
@@ -324,409 +146,583 @@ No fallback paths.
 No migration logic.
 No reads from `settings.json`.
 
-### Rules
+## Exact file shape
 
-- Preserve unrelated files.
-- Only read and write `~/.pi/agent/pi-telegram.json`.
-- Write the extension config atomically.
-- Be tolerant of unknown future fields.
-- Load this file automatically on startup.
+```json
+{
+  "version": 1,
+  "enabled": true,
+  "botToken": "123456789:ABCdef...",
+  "botId": 123456789,
+  "botUsername": "my_bot",
+  "chatId": -1001234567890,
+  "allowedUserIds": [111111111, 222222222],
+  "lastValidatedAt": "2026-03-17T00:00:00.000Z"
+}
+```
+
+## Field rules
+
+- `version` — required, must be `1`
+- `enabled` — required boolean; controls auto-connect behavior
+- `botToken` — required string
+- `botId` — required numeric id resolved during token validation
+- `botUsername` — required string resolved during token validation
+- `chatId` — required numeric Telegram chat id
+- `allowedUserIds` — required array of numeric user ids; must contain at least one id
+- `lastValidatedAt` — required ISO timestamp string
+
+## File behavior
+
+- write atomically
+- preserve unknown future fields if they already exist
+- `/telegram toggle` updates only `enabled`
+- `/telegram logout` deletes `~/.pi/agent/pi-telegram.json`
 
 ---
 
-## Bottom bar feedback
+## Connect flow
 
-Use `ctx.ui.setStatus()` for a persistent footer indicator.
+## `/telegram connect`
 
-This should stay **extremely simple**.
+This command must be guided and interactive.
 
-## Recommended persistent states
+### Inputs collected
 
+The flow collects, in order:
+
+1. bot token
+2. chat id
+3. allowed user ids as CSV
+4. enable-now confirmation
+
+### Token validation
+
+Validate the bot token immediately.
+
+On success, show:
+
+- bot username
+- bot id
+
+The user does **not** type the bot id manually.
+It is resolved from Telegram.
+
+### Chat id validation
+
+The user must paste a numeric chat id manually.
+
+Validation must confirm:
+
+- the value parses as a number
+- `getChat(chatId)` succeeds
+- `getChatMember(chatId, botId)` succeeds
+- the bot can access that chat
+- the chat is usable for relay purposes
+
+### Allowed user id validation
+
+The user must paste a CSV of numeric Telegram user ids.
+
+Rules:
+
+- trim whitespace
+- require at least one id
+- reject non-numeric values
+- store as numeric array in input order
+
+### Setup hints
+
+The connect flow must show short hints explaining where to get:
+
+- chat id
+- user id
+- bot id
+
+Bot id is for user reference only; it is still resolved automatically from the token.
+
+### Save result
+
+After validation succeeds:
+
+- write the config file
+- set `enabled` from the user’s choice
+- if enabled, connect immediately
+- update the footer immediately
+
+---
+
+## Commands
+
+## Public command surface
+
+Use one command root:
+
+- `/telegram`
+
+Subcommands:
+
+- `/telegram connect`
+- `/telegram toggle`
+- `/telegram logout`
+- `/telegram test`
+- `/telegram status`
+
+Optional aliases are allowed, but `/telegram ...` is the canonical interface.
+
+## Command rules
+
+### `/telegram`
+
+Shows:
+
+- connected or disconnected
+- enabled true or false
+- bot username and bot id if configured
+- chat id if configured
+- allowed user ids
+- queue length
+- active Telegram progress message id if one exists
+- last successful Telegram API call time
+- current retry state if disconnected due to runtime failure
+- current failure log path if a retry episode is active
+
+### `/telegram toggle`
+
+Rules:
+
+- if no config file exists, refuse and direct the user to `/telegram connect`
+- flip the persisted `enabled` flag
+- if `enabled` becomes `false`, disconnect immediately
+- if `enabled` becomes `true`, start or resume connection attempts immediately
+- preserve the rest of the config file
+
+### `/telegram logout`
+
+Rules:
+
+- require confirmation
+- disconnect
+- delete `~/.pi/agent/pi-telegram.json`
+- clear in-memory relay state tied to saved credentials
+- do **not** remove prompt items that were already accepted into pi’s prompt flow
+- set footer to disconnected
+
+### `/telegram status`
+
+This command is the deterministic state report for both humans and AI.
+
+It must use this exact line-oriented shape:
+
+```text
+connection: <connected|disconnected>
+enabled: <true|false>
+bot_username: <value|none>
+bot_id: <value|none>
+chat_id: <value|none>
+allowed_user_ids: <csv|none>
+queue_length: <number>
+active_progress_message_id: <value|none>
+last_api_success_at: <iso-timestamp|none>
+retry_state: <active|inactive>
+failure_log_path: <path|none>
+```
+
+No prose paragraphs.
+No table formatting.
+No omitted fields.
+
+### `/telegram test`
+
+This command must:
+
+1. send a Telegram test message
+2. include a one-time numeric reply code
+3. wait up to **60 seconds** for a matching reply from an allowed sender in the configured chat
+4. report success or failure locally
+5. edit the Telegram test message to reflect success or expiry
+
+---
+
+## Local footer
+
+## Steady states
+
+The footer should stay simple.
+
+Steady states:
+
+- `TG connected`
 - `TG disconnected`
+
+## Failure feedback
+
+When runtime failures occur, the footer may temporarily expand the disconnected state with short retry feedback.
+
+Allowed retry format:
+
+- `TG disconnected · retrying in 5s`
+
+When Telegram calls succeed again, return to:
+
 - `TG connected`
 
-That is the whole persistent model.
-
-## Styling
-
-Use simple color semantics:
-
-- dim for disconnected
-- green for connected
-
-Anything more detailed, such as connect failures or test progress, should be shown as transient command feedback or notifications, not as persistent footer complexity.
-
-The footer state should be readable at a glance and answer only one question:
-
-- is Telegram connected or not?
-
 ---
 
-## Telegram message UX
+## Telegram outbound behavior
 
-This is the most important part of the product.
+## All runs are relayed
 
-The Telegram chat should feel useful, calm, and legible.
+If the relay is connected, every pi run must attempt Telegram updates.
 
-## Principles copied from Takopi
+That includes locally started runs.
 
-### 1. One live progress message per run
+## One progress message per run
 
-When a new run starts:
+For each run.
 
-- send one progress message
-- keep its Telegram `message_id`
-- edit that message as work progresses
+A run is the full `agent_start` → `agent_end` envelope.
+A run may contain multiple turns.
+Steering and follow-up messages extend the same run and do **not** create a separate run.
 
-Do **not** emit a new Telegram message for every agent event.
+For each run:
 
-### 2. Only edit on meaningful change
+- create one Telegram progress message when the run starts
+- keep its `message_id`
+- edit that same message as the run evolves
 
-Do not edit just because time passed.
+## Render only on meaningful delta
 
-Edit only when the visible summary changes, for example:
+Only edit the Telegram message when the rendered content changes.
 
-- new step started
-- action completed
-- status changed
-- final answer ready
-- run failed
-- run cancelled
+Do not edit for no-op timer ticks or unchanged output.
 
-### 3. Keep progress compact
+## Finalization rule
 
-Progress messages should be summaries, not transcripts.
+At run end:
 
-Show:
+- edit the same progress message into its final state
+- do not leave stale progress content behind
+
+## Takopi formatting rules
+
+Use Takopi-style behavior as the baseline.
+
+Lock these defaults:
+
+- progress header format: `status · pi · <elapsed> · step <n>`
+- keep at most **5** recent action lines in progress output
+- file change summaries should show at most **3** inline file paths before overflow summary
+- final body should target **3500 characters max per Telegram message body chunk**
+- if final output exceeds that size, split into continuation chunks labeled `continued (N/M)`
+- preserve code fences when splitting
+- preserve ordered lists and bullet lists when rendering
+- sanitize unsupported local links instead of emitting broken links
+
+## Output content rules
+
+Show compact human-readable action summaries.
+
+Do show:
 
 - current state
 - elapsed time
 - a few recent meaningful actions
+- concise final answer or failure summary
 
 Do not show:
 
 - token-by-token streaming
-- raw diffs
-- giant logs
-- repetitive tool noise
-
-### 4. Final messages should replace or conclude progress cleanly
-
-When the run finishes:
-
-- edit the progress message into the final result when possible
-- or replace it cleanly if needed
-- remove any temporary controls / loading state
-
-### 5. Long messages must be Telegram-safe
-
-If a final answer is too long:
-
-- split it cleanly
-- preserve code blocks
-- add continuation labels like `continued (2/3)`
-- keep the thread readable
-
----
-
-## Recommended message format
-
-## Progress message format
-
-Use a compact Takopi-style structure:
-
-```text
-working · pi · 18s · step 3
-
-✓ reviewed current files
-✓ drafted command UX
-↻ updating Telegram relay spec
-
-reply in Telegram to guide the agent
-```
-
-### Notes
-
-- first line is status + identity + elapsed time + step count
-- body is short action lines
-- footer can be a short interaction hint when useful
-
-## Final message format
-
-```text
-done · pi · 42s
-
-Saved the Telegram relay spec.
-
-- defined connect / toggle / logout / test commands
-- specified footer status behavior
-- specified edit-in-place Telegram UX
-```
-
-### Failure format
-
-```text
-error · pi · 12s
-
-Could not validate the configured chat id.
-
-- bot token is valid
-- bot cannot access the target chat
-- run /telegram connect to update the saved settings
-```
-
----
-
-## Action summarization rules
-
-Takopi’s biggest win is that it formats work as a small number of human-readable action lines.
-
-We should do the same.
-
-### Good action lines
-
-- `reviewed current files`
-- `reading overview.md`
-- `editing settings flow`
-- `running test message check`
-- `updated 2 files`
-
-### Bad action lines
-
-- raw JSON payloads
+- giant raw logs
 - repeated partial assistant text
-- huge patch output
-- low-signal internal events
-
-### File change formatting
-
-Follow Takopi’s lead:
-
-- show relative file names when possible
-- cap inline file listing
-- summarize overflow
-
-Example:
-
-- `updated README.md, src/relay.ts, src/status.ts …(+2 more)`
+- noisy low-signal internal events
 
 ---
 
-## Markdown / Telegram rendering rules
+## Telegram inbound behavior
 
-Takopi’s renderer is careful for a reason. We should carry over the same standards.
+## Acceptance rule
 
-### Requirements
+Accept a Telegram input event only when:
 
-- render Telegram-safe formatting, not raw markdown guesses
-- preserve code blocks and bullet lists cleanly
-- preserve ordered lists when possible
-- drop or sanitize unsupported local links instead of sending broken links
-- split long bodies without breaking formatting
-- if a code block is split, close and reopen it correctly
+- `chat_id` matches the configured `chatId`
+- `sender_id` exists
+- `sender_id` is included in `allowedUserIds`
 
-This is essential if Telegram updates should stay readable.
+Ignore all other incoming events.
+
+## Supported source types
+
+For v1, accept:
+
+- normal Telegram text messages
+- Telegram message edits for queued normal text messages
+
+For v1, do **not** accept captions as prompt input.
+
+Non-text input is out of scope for prompt injection.
+
+## Injection model
+
+Every accepted Telegram message must behave as if the user typed it directly into the pi harness input.
+
+There is no separate Telegram-only prompt model.
+
+## Agent queue semantics
+
+Pi has two internal message insertion paths during a run:
+
+- steering queue via `agent.steer()`
+- follow-up queue via `agent.followUp()`
+
+### Steering queue semantics
+
+Steering messages are consumed mid-run between tool boundaries.
+
+When a steering message is consumed:
+
+- remaining tool calls in the current turn are skipped
+- the steering message is injected into context
+- a new turn starts immediately
+- the run continues inside the same `agent_start` → `agent_end` envelope
+
+### Follow-up queue semantics
+
+Follow-up messages are consumed only when the agent would otherwise stop.
+
+When a follow-up message is consumed:
+
+- it becomes the next pending user message
+- a new turn starts immediately
+- the run continues inside the same `agent_start` → `agent_end` envelope
+
+### Telegram default when pi is busy
+
+If a Telegram message arrives while pi is busy, the relay must place it into the **follow-up queue by default**.
+
+It must **not** create a fresh `agent.prompt()` call after `agent_end`.
+
+That means the busy-path Telegram message is consumed inside the current run if the run continues long enough to reach follow-up consumption.
+
+### Telegram interrupt behavior
+
+V1 does not invent a new interrupt mode.
+
+If a future explicit interrupt feature is added, it may route selected Telegram input to the steering queue.
+Until then, the default busy-path behavior is follow-up only.
+
+### If pi is idle
+
+Inject the Telegram message immediately as the next prompt.
+
+### If pi is busy
+
+Queue the Telegram message into the follow-up queue.
+
+The queue must then:
+
+- preserve FIFO order across all queued sources
+- drain automatically after the current assistant message ends
+- continue draining one item after another until the queue is empty
+
+This should mirror how queued local terminal prompts behave.
+
+## Telegram message edits while queued
+
+If a Telegram message is already queued and the user edits that same Telegram message **before it has been dispatched into pi**:
+
+- identify the queued item by the original Telegram `message_id`
+- update the queued item’s text in place
+- preserve its original queue position
+- do not create a second queued item
+
+If the Telegram message has already been dispatched into pi:
+
+- ignore later Telegram edits for prompt injection purposes
+
+## New Telegram messages while queued
+
+If the user sends a brand-new Telegram message:
+
+- enqueue it as a new FIFO item
+
+Editing a queued message updates that queued item.
+Sending a new message adds a new queue item.
+
+## Remote command behavior
+
+Telegram may send:
+
+- normal prompts
+- pi commands
+- relay-management commands
+
+All are accepted through the same input model, subject to the whitelist and chat match rules.
 
 ---
 
-## Outbound update queue behavior
+## Queue behavior
 
-Even for one chat, we should keep the transport logic disciplined.
+## Queue storage
 
-## Required behavior
+The prompt queue is in-memory only.
 
-- only one pending progress edit per active Telegram message
-- if a newer edit arrives, it replaces the older pending edit
-- final sends outrank stale progress edits
-- stale edits should never land after the final result
+## Ordering rule
 
-This is directly inspired by Takopi’s outbox model and is important for race-free UX.
+Ordering is by acceptance time across all sources.
 
----
+All accepted prompt inputs must enter one effective prompt queue and receive one monotonic acceptance order.
+Dispatch must happen strictly by that order.
 
-## Inbound message behavior
+If two queued items are accepted in the same logical instant, preserve insertion order.
 
-The relay must accept Telegram text and feed it back into pi.
+## Disconnect / reconnect rule
 
-## Basic rule
+If the relay disconnects and later reconnects during the same pi process:
 
-Only accept input from the configured chat.
+- keep the existing in-memory queue
+- continue draining it once pi is ready
 
-## Delivery behavior
+## Restart / reload rule
 
-Every incoming Telegram message should be treated as if the user had typed it directly into the pi harness input.
+If pi restarts or the extension reloads:
 
-### If the agent is idle
+- do not persist queued prompts
+- do not restore queued prompts
 
-Use that Telegram message immediately as the next prompt.
+## Logout rule for accepted prompts
 
-### If the agent is already working
+If `/telegram logout` happens after a prompt was already accepted into pi’s prompt flow:
 
-Queue that Telegram message and deliver it when the harness is ready for the next user prompt.
-
-Rules:
-
-- preserve arrival order
-- each Telegram message becomes one user input item
-- do not invent a separate Telegram-only prompt model
-- do not silently drop messages
-- do not interrupt the current run unless a future explicit command is added for that purpose
-
-This should mirror normal local pi input behavior as closely as possible.
-
-### Reserved relay replies
-
-Some inbound Telegram replies should be consumed by the relay itself and **not** forwarded into the agent:
-
-- `/telegram test` verification replies
-
-## Slash-command parity
-
-Telegram input should go through the same logical input path as normal typed input whenever possible.
-
-That means if the user sends something like:
-
-- `/compact`
-- `/name release prep`
-- `/telegram status`
-
-it should behave as consistently as possible with local pi input.
+- that prompt remains in pi’s prompt flow
+- it may still execute later according to normal queue semantics
+- logout only stops future Telegram relay activity and removes saved relay credentials
 
 ---
 
-## Test command behavior
+## Failure handling and logging
 
-`/telegram test` should prove that the relay works both ways.
+## Runtime failure response
 
-## Test message UX
+A failure is connection-affecting only if it is one of these:
 
-Send something like:
+- unreachable Telegram
+- invalid token or auth responses
+- polling failures
+- network or timeout failures
+- send/edit failures caused by auth, connectivity, or transport failure
 
-```text
-Telegram relay test
+A failure is **not** connection-affecting if it is only:
 
-Reply to this message with: 4821
-This check expires in 60 seconds.
-```
+- invalid content formatting
+- stale or non-editable message state
+- message-specific payload rejection that does not indicate transport loss
 
-## Success behavior
+On a connection-affecting failure:
 
-On matching reply:
+- switch the footer to disconnected immediately
+- record the failure in the active failure log
+- retry after 5 seconds
+- continue retrying every 5 seconds until a Telegram API call succeeds
 
-- update the test state in pi
-- optionally edit the Telegram test message to mark success
-- show a clear local confirmation
+## Recovery response
 
-Example:
+When a Telegram API call succeeds again:
 
-- `Telegram test passed: outbound and inbound relay both work`
+- mark the relay connected again
+- return the footer to `TG connected`
+- stop the current retry episode
 
-## Timeout behavior
+A successful polling call also counts as a successful Telegram API call for connection-health purposes.
 
-If the reply never arrives:
+## Failure log location
 
-- show timeout locally
-- optionally mark the Telegram test message as expired
-- do not erase saved credentials automatically
+Write repeated failures to:
 
-This is a health check, not an auto-destructive action.
+- `~/.pi/pi-telegram/`
 
----
+## Failure log file naming
 
-## Suggested state model
+Use one file per retry episode:
 
-At minimum, the relay should track:
+- `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log`
 
-- saved credentials present or not
-- enabled or disabled
-- connected or disconnected
-- current active Telegram progress message id, if any
-- pending test request, if any
+## Failure log contents
 
-A simple practical persistent state set:
+Failure logs must be newline-delimited JSON.
 
-- `disconnected`
-- `connected`
+Each line must include:
 
-Anything more detailed should remain transient command feedback, not persistent UI state.
+- `timestamp`
+- `operation`
+- `attempt`
+- `error_type`
+- `error_message`
+
+When the connection recovers, stop appending to that episode log.
+A later failure episode creates a new file.
 
 ---
 
 ## Session behavior
 
-The Telegram relay should be treated as **process-level connection state**, not temporary message state.
+The relay is process-level connection state.
 
-That means:
+Rules:
 
-- switching pi sessions should not silently disconnect Telegram
-- if the agent stays running, the relay stays available
-- current session activity becomes the content that gets relayed
+- switching pi sessions does not disconnect Telegram
+- all runs in the current pi process may be relayed while connected
+- relay connection state is independent from any one conversation branch
 
 ---
 
-## Recommended non-goals for v1
+## Non-goals for v1
 
-To keep the first version clean, do **not** require:
+Do not build:
 
 - multiple chats
-- multiple Telegram users
-- forum topics / thread routing
-- voice notes
-- file uploads
-- inline buttons beyond optional future polish
-- rich admin controls inside Telegram
-
-v1 should focus on:
-
-- one bot
-- one chat
-- reliable outbound updates
-- reliable inbound text replies
-- strong local command UX
+- multi-chat routing
+- forum topics
+- voice note input
+- file upload prompt injection
+- a side panel or alternate control surface
+- queue persistence across restart
 
 ---
 
 ## Documentation maintenance
 
-Any project change must also update the project docs.
-
-Required update targets:
+Any project change must update:
 
 - `.memory/`
 - `README.md`
 - `AGENTS.md`
 
-This repo should treat those files as part of the product, not as optional follow-up work.
-
 ---
 
 ## Acceptance criteria
 
-The feature is correct when all of the following are true:
+The implementation is correct only if all of the following are true:
 
-1. A user can run `/telegram connect`, enter a bot token and chat id, validate both, and save them.
-2. The saved configuration is loaded only from `~/.pi/agent/pi-telegram.json` on startup.
-3. The bottom bar immediately shows only whether Telegram is connected or disconnected.
-4. When enabled, a new agent run creates one Telegram progress message, not a flood of messages.
-5. Progress updates edit that message in place.
-6. Final output is delivered cleanly and long output is split safely when needed.
-7. Telegram messages are injected into pi as normal user input, as if they had been typed into the harness input directly.
-8. If the agent is busy, Telegram messages are queued in arrival order until the harness is ready for the next prompt.
-9. `/telegram toggle` cleanly enables and disables the relay connection.
-10. `/telegram logout` clears saved credentials and disconnects the relay.
-11. `/telegram test` sends a test message, waits for a reply, and confirms end-to-end health.
-12. Config writes preserve unrelated files and only touch `~/.pi/agent/pi-telegram.json`.
-
----
-
-## Final recommendation
-
-The product should feel like **Takopi’s Telegram polish applied to a pi extension**:
-
-- guided setup like pi
-- quiet editing behavior like Takopi
-- compact status formatting like Takopi
-- simple local command UX
-- instant bottom-bar clarity inside pi
-
-If we get those five things right, this will feel polished instead of bolted on.
+1. The extension is written in TypeScript.
+2. The relay reads and writes only `~/.pi/agent/pi-telegram.json`.
+3. `/telegram connect` collects bot token, chat id, and allowed user ids CSV.
+4. Bot token validation resolves and displays bot username and bot id.
+5. Chat id is entered manually and validated against Telegram.
+6. Allowed user ids are stored as a whitelist and enforced for all inbound Telegram control.
+7. All pi runs, including local-terminal-originated runs, create Telegram progress updates while connected.
+8. Each run uses one Telegram progress message and edits it in place.
+9. Final output edits the original progress message.
+10. Long final output uses Takopi-style safe splitting with continuation chunks.
+11. Accepted Telegram messages are injected into pi as normal user input.
+12. If pi is busy, queued input drains automatically after the current assistant message ends.
+13. Queue order is strict FIFO across all sources.
+14. Editing a queued Telegram message updates the queued item in place.
+15. Sending a new Telegram message creates a new FIFO queued item.
+16. Telegram may invoke all commands, including relay-management commands.
+17. `TG connected` means the last Telegram API call succeeded within the last 60 seconds.
+18. Runtime failure switches the relay to disconnected immediately and retries every 5 seconds.
+19. Failure episodes are logged under `~/.pi/pi-telegram/YYYYMMDD-HHmmss.log`.
+20. Queue state survives disconnect/reconnect within the same process and does not survive restart or extension reload.
+21. Captions do not act as prompt input in v1.
+22. `/telegram logout` does not remove prompts already accepted into pi’s prompt flow.
